@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-08-07T12:00:00Z",
+  "mode": "mock",
+  "username": "BenchBot",
+  "health": 20.0,
+  "food": 20,
+  "saturation": 5.0,
+  "oxygen": 20,
+  "position": { "x": 0.0, "y": 64.0, "z": 0.0 },
+  "yaw": 0.0,
+  "pitch": 0.0,
+  "dimension": "minecraft:overworld",
+  "time_of_day": 6000,
+  "is_raining": false,
+  "experience_level": 0,
+  "inventory": [
+    { "slot": 0, "name": "stone", "display_name": "Stone", "count": 12 }
+  ],
+  "equipped": {
+    "hand": { "name": "stone_sword", "display_name": "Stone Sword" }
+  },
+  "nearby_entities": [
+    {
+      "id": 123,
+      "name": "zombie",
+      "display_name": "Zombie",
+      "kind": "hostile",
+      "position": { "x": 1.0, "y": 64.0, "z": 2.0 },
+      "distance": 3.2
+    }
+  ],
+  "nearby_players": [
+    {
+      "username": "Steve",
+      "position": { "x": 1.0, "y": 64.0, "z": 2.0 },
+      "distance": 2.0
+    }
+  ]
+}

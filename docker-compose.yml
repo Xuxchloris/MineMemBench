@@ -1,0 +1,40 @@
+services:
+  mc-server:
+    image: itzg/minecraft-server:java21
+    environment:
+      EULA: "TRUE"
+      ONLINE_MODE: "FALSE"
+      VERSION: "1.20.4"
+      DIFFICULTY: peaceful
+      LEVEL_TYPE: flat
+    ports:
+      - "25565:25565"
+    volumes:
+      - mc-data:/data
+
+  bot:
+    build: ./minecraft
+    depends_on:
+      - mc-server
+    environment:
+      MC_HOST: mc-server
+      MC_PORT: "25565"
+      MC_USERNAME: BenchBot
+      MC_VERSION: "1.20.4"
+      BOT_API_PORT: "8081"
+    ports:
+      - "8081:8081"
+
+  benchmark:
+    build:
+      context: .
+      dockerfile: benchmark/Dockerfile
+    depends_on:
+      - bot
+    environment:
+      BOT_URL: http://bot:8081
+    volumes:
+      - ./results:/app/results
+
+volumes:
+  mc-data:

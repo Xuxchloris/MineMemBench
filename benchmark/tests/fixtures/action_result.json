@@ -1,0 +1,39 @@
+{
+  "action_id": "3f6f5c1a-2b44-4c8d-9e71-0a1b2c3d4e5f",
+  "action": "move_to",
+  "status": "completed",
+  "started_at": "2026-08-07T12:00:00Z",
+  "finished_at": "2026-08-07T12:00:01Z",
+  "result": { "position": { "x": 10.0, "y": 64.0, "z": 10.0 } },
+  "error": null,
+  "state_after": {
+    "timestamp": "2026-08-07T12:00:01Z",
+    "mode": "mock",
+    "username": "BenchBot",
+    "health": 20.0,
+    "food": 20,
+    "saturation": 5.0,
+    "oxygen": 20,
+    "position": { "x": 10.0, "y": 64.0, "z": 10.0 },
+    "yaw": 0.0,
+    "pitch": 0.0,
+    "dimension": "minecraft:overworld",
+    "time_of_day": 6000,
+    "is_raining": false,
+    "experience_level": 0,
+    "inventory": [
+      { "slot": 0, "name": "stone", "display_name": "Stone", "count": 12 }
+    ],
+    "equipped": {
+      "hand": { "name": "stone_sword", "display_name": "Stone Sword" }
+    },
+    "nearby_entities": [],
+    "nearby_players": [
+      {
+        "username": "Steve",
+        "position": { "x": 11.0, "y": 64.0, "z": 12.0 },
+        "distance": 2.2
+      }
+    ]
+  }
+}

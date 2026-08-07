@@ -1,0 +1,143 @@
+"""AgentRunner tests with a FakeBotClient — loop semantics, no network."""
+
+from __future__ import annotations
+
+import json
+import uuid
+from datetime import UTC, datetime
+from typing import Any
+
+from minemembench.core.models import (
+    ActionResult,
+    ActionStatus,
+    Position,
+    WorldState,
+)
+from minemembench.core.runner import AgentRunner, RunLog
+from minemembench.memory.no_memory import NoMemoryBackend
+
+from .conftest import FakeLLM, make_world_state
+
+
+class FakeBotClient:
+    """In-memory bot bridge: `move_to` teleports, everything else holds still."""
+
+    def __init__(self, start: Position | None = None) -> None:
+        self._position = start or Position(x=0.0, y=64.0, z=0.0)
+        self.execute_calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def get_state(self) -> WorldState:
+        return make_world_state(self._position.x, self._position.y, self._position.z)
+
+    async def execute(
+        self, action: str, arguments: dict[str, Any], timeout_ms: int = 30000
+    ) -> ActionResult:
+        self.execute_calls.append((action, arguments))
+        if action == "move_to":
+            self._position = Position(
+                x=float(arguments["x"]),
+                y=float(arguments["y"]),
+                z=float(arguments["z"]),
+            )
+        now = datetime(2026, 8, 7, 12, 0, 0, tzinfo=UTC)
+        return ActionResult(
+            action_id=uuid.uuid4().hex,
+            action=action,
+            status=ActionStatus.COMPLETED,
+            started_at=now,
+            finished_at=now,
+            result={"position": self._position.model_dump()},
+            error=None,
+            state_after=await self.get_state(),
+        )
+
+
+def _move_to_output(x: float, y: float, z: float) -> str:
+    return json.dumps(
+        {"action": "move_to", "arguments": {"x": x, "y": y, "z": z},
+         "reason": "heading to the goal"}
+    )
+
+
+WAIT_OUTPUT = json.dumps(
+    {"action": "wait", "arguments": {"seconds": 1}, "reason": "holding position"}
+)
+
+
+async def test_reaches_success_at_and_stops() -> None:
+    llm = FakeLLM([_move_to_output(10, 64, 10)] * 5)  # extra outputs unused
+    runner = AgentRunner(FakeBotClient(), NoMemoryBackend(), llm)
+
+    log = await runner.run_goal(
+        "go to (10, 64, 10)",
+        max_steps=5,
+        success_at=Position(x=10.0, y=64.0, z=10.0),
+    )
+
+    assert log.success is True
+    assert len(log.steps) == 1  # stopped as soon as the goal was reached
+    assert log.llm_calls == 1
+    assert log.total_prompt_tokens == 10
+    assert log.total_completion_tokens == 5
+    assert log.memory_backend == "none"
+    assert log.model == "fake-model"
+    assert log.temperature == 0.0
+    assert log.goal == "go to (10, 64, 10)"
+    assert log.run_id
+
+    step = log.steps[0]
+    assert step.index == 0
+    assert step.action == "move_to"
+    assert step.arguments == {"x": 10, "y": 64, "z": 10}
+    assert step.action_status is ActionStatus.COMPLETED
+    assert step.retrieved_memory_count == 0
+    assert step.position == Position(x=10.0, y=64.0, z=10.0)
+    assert step.reason == "heading to the goal"
+
+
+async def test_success_radius_is_two_blocks() -> None:
+    llm = FakeLLM([_move_to_output(11, 64, 10)])  # 1 block away from target
+    runner = AgentRunner(FakeBotClient(), NoMemoryBackend(), llm)
+
+    log = await runner.run_goal(
+        "close enough", max_steps=5, success_at=Position(x=10.0, y=64.0, z=10.0)
+    )
+
+    assert log.success is True
+
+
+async def test_max_steps_without_reaching_goal() -> None:
+    llm = FakeLLM([WAIT_OUTPUT] * 3)
+    bot = FakeBotClient()
+    runner = AgentRunner(bot, NoMemoryBackend(), llm)
+
+    log = await runner.run_goal(
+        "never moving",
+        max_steps=3,
+        success_at=Position(x=100.0, y=64.0, z=100.0),
+    )
+
+    assert log.success is False
+    assert len(log.steps) == 3
+    assert log.llm_calls == 3
+    assert log.total_prompt_tokens == 30
+    assert log.total_completion_tokens == 15
+    assert len(bot.execute_calls) == 3
+    assert [step.index for step in log.steps] == [0, 1, 2]
+
+
+async def test_run_log_to_json_round_trips() -> None:
+    llm = FakeLLM([_move_to_output(10, 64, 10)])
+    runner = AgentRunner(FakeBotClient(), NoMemoryBackend(), llm)
+
+    log = await runner.run_goal(
+        "serialize me", max_steps=2, success_at=Position(x=10.0, y=64.0, z=10.0)
+    )
+
+    parsed = json.loads(log.to_json())
+    assert parsed["success"] is True
+    assert parsed["memory_backend"] == "none"
+    assert parsed["llm_calls"] == 1
+    assert parsed["steps"][0]["action"] == "move_to"
+    # The JSON must validate back into the same model.
+    assert RunLog.model_validate(parsed) == log

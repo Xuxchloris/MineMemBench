@@ -1,0 +1,31 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/
+coverage/
+
+# Node
+node_modules/
+dist/
+
+# Minecraft server runtime (binary + world data + logs)
+minecraft/server/server.jar
+minecraft/server/world/
+minecraft/server/logs/
+minecraft/server/
+
+# Results (generated artifacts)
+results/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,10 @@
+{
+  "action_id": "7aa0b1c2-3d55-4e9f-8a62-1b2c3d4e5f60",
+  "action": "move_to",
+  "status": "failed",
+  "started_at": "2026-08-07T12:05:00Z",
+  "finished_at": "2026-08-07T12:05:03Z",
+  "result": null,
+  "error": "Target is unreachable",
+  "state_after": null
+}

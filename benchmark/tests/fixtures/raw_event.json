@@ -1,0 +1,6 @@
+{
+  "event_id": "9c1d2e3f-4a66-4b70-9c83-2c3d4e5f6071",
+  "timestamp": "2026-08-07T12:00:05Z",
+  "kind": "chat",
+  "data": { "username": "Steve", "message": "take this bread" }
+}
