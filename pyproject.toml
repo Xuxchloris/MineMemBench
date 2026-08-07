@@ -26,6 +26,11 @@ dev = [
 mem0 = [
     "mem0ai>=2.0.17,<3",
 ]
+# Charts for the M11 report (`minemembench report`). Matplotlib is imported
+# lazily inside write_charts; the report command explains how to install it.
+report = [
+    "matplotlib>=3.9",
+]
 
 [project.scripts]
 minemembench = "minemembench.cli:main"

@@ -24,6 +24,8 @@ from .core.config import Settings
 from .core.ids import new_run_id
 from .core.models import ActionResult, HealthResponse, Position, WorldState
 from .core.runner import AgentRunner, RunLog
+from .evaluation.metrics import aggregate, load_results
+from .evaluation.reporter import write_charts, write_csv, write_markdown
 from .events.collector import EventCollector
 from .memory.registry import MemoryRegistryError, create_memory_backend
 from .scenarios.base import ScenarioContext, ScenarioResult
@@ -120,6 +122,23 @@ def _build_parser() -> argparse.ArgumentParser:
         "--temperature", type=float, default=None, help="LLM temperature override."
     )
     run.set_defaults(handler=_cmd_run)
+
+    report = subparsers.add_parser(
+        "report",
+        help=(
+            "Generate summary.csv, report.md, and charts/*.png from "
+            "scenario_*.json results."
+        ),
+    )
+    report.add_argument(
+        "--results-dir",
+        default=None,
+        help=(
+            "Directory of scenario_*.json result files "
+            "(default: RESULTS_DIR env or results/)."
+        ),
+    )
+    report.set_defaults(handler=_cmd_report)
 
     return parser
 
@@ -256,6 +275,45 @@ async def _run_async(args: argparse.Namespace, settings: Settings) -> RunLog:
         return await runner.run_goal(
             args.goal, max_steps=args.max_steps, success_at=success_at
         )
+
+
+def _cmd_report(args: argparse.Namespace, settings: Settings) -> int:
+    results_dir = Path(args.results_dir or settings.results_dir)
+    if not results_dir.is_dir():
+        print(f"error: results directory not found: {results_dir}", file=sys.stderr)
+        return 2
+
+    results = load_results(results_dir)
+    if not results:
+        print(
+            f"error: no scenario_*.json result files found under {results_dir}",
+            file=sys.stderr,
+        )
+        return 2
+
+    aggregates = aggregate(results)
+    out_dir = results_dir / "report"
+    charts_dir = out_dir / "charts"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    charts_dir.mkdir(parents=True, exist_ok=True)
+
+    csv_path = write_csv(aggregates, out_dir / "summary.csv")
+    md_path = write_markdown(aggregates, results, out_dir / "report.md")
+    try:
+        chart_paths = write_charts(aggregates, charts_dir)
+    except ImportError:
+        print(
+            "error: matplotlib is not installed; install it with "
+            '`uv pip install -e ".[report]"` (the `report` extra)',
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"summary: {csv_path}")
+    print(f"report:  {md_path}")
+    for chart_path in chart_paths:
+        print(f"chart:   {chart_path}")
+    return 0
 
 
 def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:

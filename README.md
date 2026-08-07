@@ -152,5 +152,5 @@ the benchmark.
 - [x] M8 Mem0 adapter (against current official docs)
 - [x] M9 Letta adapter (against current official docs)
 - [x] M10 Scenarios B + C
-- [ ] M11 Reports: CSV / Markdown / charts
+- [x] M11 Reports: CSV / Markdown / charts
 - [ ] Later: Graphiti, ReMe, Text2Mem, A-Mem, Generative Agents memory
