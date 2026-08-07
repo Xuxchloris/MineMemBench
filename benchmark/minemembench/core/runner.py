@@ -9,15 +9,16 @@ backend-independent short-term context (see agent.planner).
 from __future__ import annotations
 
 import math
-import uuid
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..agent.llm_provider import LLMProvider
 from ..agent.planner import Planner, TranscriptEntry
+from ..events.collector import EventCollector
 from ..memory.base import MemoryBackend
 from .client import BotClient
+from .ids import new_run_id
 from .models import ActionStatus, Position
 
 #: A goal position counts as reached within this euclidean distance (blocks).
@@ -56,6 +57,7 @@ class RunLog(BaseModel):
     total_prompt_tokens: int = Field(ge=0)
     total_completion_tokens: int = Field(ge=0)
     success: bool
+    collected_event_count: int = Field(default=0, ge=0)
 
     def to_json(self) -> str:
         """Serialize the run for the results directory."""
@@ -71,11 +73,17 @@ class AgentRunner:
     """Runs a single goal against the bot bridge with an injected backend."""
 
     def __init__(
-        self, bot: BotClient, memory: MemoryBackend, llm: LLMProvider
+        self,
+        bot: BotClient,
+        memory: MemoryBackend,
+        llm: LLMProvider,
+        *,
+        event_collector: EventCollector | None = None,
     ) -> None:
         self._bot = bot
         self._memory = memory
         self._llm = llm
+        self._event_collector = event_collector
         self._planner = Planner(bot, memory, llm)
 
     async def run_goal(
@@ -97,63 +105,73 @@ class AgentRunner:
 
         backend_stats = await self._memory.stats()
 
-        steps: list[RunStep] = []
-        transcript: list[TranscriptEntry] = []
-        llm_calls = 0
-        total_prompt_tokens = 0
-        total_completion_tokens = 0
-        success = False
+        run_id = new_run_id()
+        collected_event_count = 0
+        if self._event_collector is not None:
+            await self._event_collector.start(episode_id=run_id)
 
-        for index in range(max_steps):
-            state = await self._bot.get_state()
-            decision = await self._planner.decide(goal, state, transcript)
-            llm_calls += 1 + decision.retries
-            total_prompt_tokens += decision.llm.prompt_tokens
-            total_completion_tokens += decision.llm.completion_tokens
+        try:
+            steps: list[RunStep] = []
+            transcript: list[TranscriptEntry] = []
+            llm_calls = 0
+            total_prompt_tokens = 0
+            total_completion_tokens = 0
+            success = False
 
-            result = await self._bot.execute(
-                decision.action.action.value, decision.action.arguments
-            )
-            position = (
-                result.state_after.position
-                if result.state_after is not None
-                else state.position
-            )
+            for index in range(max_steps):
+                state = await self._bot.get_state()
+                decision = await self._planner.decide(goal, state, transcript)
+                llm_calls += 1 + decision.retries
+                total_prompt_tokens += decision.llm.prompt_tokens
+                total_completion_tokens += decision.llm.completion_tokens
 
-            steps.append(
-                RunStep(
-                    index=index,
-                    position=position,
-                    retrieved_memory_count=len(decision.retrieved_memories),
-                    action=decision.action.action.value,
-                    arguments=decision.action.arguments,
-                    reason=decision.action.reason,
-                    action_status=result.status,
-                    prompt_tokens=decision.llm.prompt_tokens,
-                    completion_tokens=decision.llm.completion_tokens,
-                    latency_s=decision.llm.latency_s,
+                result = await self._bot.execute(
+                    decision.action.action.value, decision.action.arguments
                 )
-            )
-            transcript.append(
-                TranscriptEntry(
-                    index=index,
-                    action=decision.action.action.value,
-                    arguments=decision.action.arguments,
-                    reason=decision.action.reason,
-                    status=result.status,
-                    position_after=position,
+                position = (
+                    result.state_after.position
+                    if result.state_after is not None
+                    else state.position
                 )
-            )
 
-            if (
-                success_at is not None
-                and _distance(position, success_at) <= SUCCESS_RADIUS_BLOCKS
-            ):
-                success = True
-                break
+                steps.append(
+                    RunStep(
+                        index=index,
+                        position=position,
+                        retrieved_memory_count=len(decision.retrieved_memories),
+                        action=decision.action.action.value,
+                        arguments=decision.action.arguments,
+                        reason=decision.action.reason,
+                        action_status=result.status,
+                        prompt_tokens=decision.llm.prompt_tokens,
+                        completion_tokens=decision.llm.completion_tokens,
+                        latency_s=decision.llm.latency_s,
+                    )
+                )
+                transcript.append(
+                    TranscriptEntry(
+                        index=index,
+                        action=decision.action.action.value,
+                        arguments=decision.action.arguments,
+                        reason=decision.action.reason,
+                        status=result.status,
+                        position_after=position,
+                    )
+                )
+
+                if (
+                    success_at is not None
+                    and _distance(position, success_at) <= SUCCESS_RADIUS_BLOCKS
+                ):
+                    success = True
+                    break
+        finally:
+            if self._event_collector is not None:
+                collected = await self._event_collector.stop()
+                collected_event_count = len(collected)
 
         return RunLog(
-            run_id=uuid.uuid4().hex,
+            run_id=run_id,
             memory_backend=backend_stats.backend,
             goal=goal,
             model=self._llm.model,
@@ -163,4 +181,5 @@ class AgentRunner:
             total_prompt_tokens=total_prompt_tokens,
             total_completion_tokens=total_completion_tokens,
             success=success,
+            collected_event_count=collected_event_count,
         )

@@ -11,6 +11,7 @@ from .client import (
     InvalidActionError,
 )
 from .config import Settings
+from .ids import new_event_id, new_run_id
 from .models import (
     ActionRequest,
     ActionResult,
@@ -58,4 +59,6 @@ __all__ = [
     "ServerHello",
     "Settings",
     "WorldState",
+    "new_event_id",
+    "new_run_id",
 ]

@@ -10,6 +10,8 @@ from typing import Any
 from minemembench.core.models import (
     ActionResult,
     ActionStatus,
+    EventType,
+    ExperienceEvent,
     Position,
     WorldState,
 )
@@ -62,6 +64,32 @@ def _move_to_output(x: float, y: float, z: float) -> str:
 WAIT_OUTPUT = json.dumps(
     {"action": "wait", "arguments": {"seconds": 1}, "reason": "holding position"}
 )
+
+
+class RecordingEventCollector:
+    """Stub collector recording start/stop calls for the runner integration."""
+
+    def __init__(self, collected: list[ExperienceEvent] | None = None) -> None:
+        self._collected = collected or []
+        self.start_calls: list[str] = []
+        self.stop_calls = 0
+
+    async def start(self, episode_id: str) -> None:
+        self.start_calls.append(episode_id)
+
+    async def stop(self) -> list[ExperienceEvent]:
+        self.stop_calls += 1
+        return self._collected
+
+
+def _experience(event_id: str, event_type: EventType) -> ExperienceEvent:
+    return ExperienceEvent(
+        event_id=event_id,
+        episode_id="ep-1",
+        timestamp=datetime(2026, 8, 7, 12, 0, 0, tzinfo=UTC),
+        actor="Steve",
+        event_type=event_type,
+    )
 
 
 async def test_reaches_success_at_and_stops() -> None:
@@ -141,3 +169,39 @@ async def test_run_log_to_json_round_trips() -> None:
     assert parsed["steps"][0]["action"] == "move_to"
     # The JSON must validate back into the same model.
     assert RunLog.model_validate(parsed) == log
+
+
+async def test_runner_starts_and_stops_event_collector() -> None:
+    llm = FakeLLM([_move_to_output(10, 64, 10)])
+    collector = RecordingEventCollector(
+        [
+            _experience("c1", EventType.PLAYER_SHARED_RESOURCE),
+            _experience("c2", EventType.PLAYER_ATTACKED_AGENT),
+        ]
+    )
+    runner = AgentRunner(
+        FakeBotClient(), NoMemoryBackend(), llm, event_collector=collector
+    )
+
+    log = await runner.run_goal(
+        "go to (10, 64, 10)",
+        max_steps=5,
+        success_at=Position(x=10.0, y=64.0, z=10.0),
+    )
+
+    assert collector.start_calls == [log.run_id]
+    assert collector.stop_calls == 1
+    assert log.collected_event_count == 2
+
+
+async def test_run_log_without_collector_counts_zero() -> None:
+    llm = FakeLLM([_move_to_output(10, 64, 10)])
+    runner = AgentRunner(FakeBotClient(), NoMemoryBackend(), llm)
+
+    log = await runner.run_goal(
+        "go to (10, 64, 10)",
+        max_steps=1,
+        success_at=Position(x=10.0, y=64.0, z=10.0),
+    )
+
+    assert log.collected_event_count == 0
