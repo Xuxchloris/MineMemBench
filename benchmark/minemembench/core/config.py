@@ -33,3 +33,7 @@ class Settings(BaseSettings):
 
     # --- Output location for benchmark results ---
     results_dir: str = "results"
+
+    # --- Memory backends ---
+    # SQLite file backing the `vector` memory backend (M6).
+    vector_db_path: str = "results/memory_vector.db"

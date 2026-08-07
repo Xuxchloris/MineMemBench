@@ -8,6 +8,7 @@ from .registry import (
     create_memory_backend,
     register_backend,
 )
+from .vector_memory import VectorMemoryBackend
 
 __all__ = [
     "MemoryBackend",
@@ -16,6 +17,7 @@ __all__ = [
     "MemoryRegistryError",
     "MemoryStats",
     "NoMemoryBackend",
+    "VectorMemoryBackend",
     "available_backends",
     "create_memory_backend",
     "register_backend",

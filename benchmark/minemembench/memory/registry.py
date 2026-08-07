@@ -12,6 +12,7 @@ from collections.abc import Callable
 from ..core.config import Settings
 from .base import MemoryBackend
 from .no_memory import NoMemoryBackend
+from .vector_memory import VectorMemoryBackend
 
 #: A factory builds a ready-to-use backend from the process settings.
 BackendFactory = Callable[[Settings], MemoryBackend]
@@ -45,10 +46,15 @@ def create_memory_backend(name: str, settings: Settings) -> MemoryBackend:
         available = ", ".join(available_backends())
         raise MemoryRegistryError(
             f"unknown memory backend {name!r}. Available now: {available}. "
-            "Other backends (vector, mem0, letta) arrive in later milestones."
+            "Other backends (mem0, letta) arrive in later milestones."
         ) from None
     return factory(settings)
 
 
-# Built-in backends. `none` is the Phase-1 baseline (M4).
+# Built-in backends. `none` is the Phase-1 baseline (M4); `vector` is the
+# local SQLite baseline (M6).
 register_backend("none", lambda settings: NoMemoryBackend())
+register_backend(
+    "vector",
+    lambda settings: VectorMemoryBackend(db_path=settings.vector_db_path),
+)

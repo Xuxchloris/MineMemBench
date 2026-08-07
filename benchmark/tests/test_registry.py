@@ -10,6 +10,7 @@ from minemembench.memory.registry import (
     available_backends,
     create_memory_backend,
 )
+from minemembench.memory.vector_memory import VectorMemoryBackend
 
 from .conftest import make_settings
 
@@ -19,15 +20,23 @@ def test_create_none_backend() -> None:
     assert isinstance(backend, NoMemoryBackend)
 
 
-def test_available_backends_lists_none() -> None:
+def test_create_vector_backend(tmp_path) -> None:
+    settings = make_settings(vector_db_path=str(tmp_path / "mem.db"))
+    backend = create_memory_backend("vector", settings)
+    assert isinstance(backend, VectorMemoryBackend)
+
+
+def test_available_backends_lists_registered_names() -> None:
     assert "none" in available_backends()
+    assert "vector" in available_backends()
 
 
 def test_unknown_backend_raises_clear_error() -> None:
     with pytest.raises(MemoryRegistryError) as exc_info:
-        create_memory_backend("vector", make_settings())
+        create_memory_backend("mem0", make_settings())
 
     message = str(exc_info.value)
-    assert "'vector'" in message
+    assert "'mem0'" in message
     assert "none" in message  # lists what IS available
+    assert "vector" in message
     assert "later milestones" in message
