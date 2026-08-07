@@ -29,3 +29,6 @@ results/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local model caches
+.models/

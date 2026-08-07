@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     # --- Output location for benchmark results ---
     results_dir: str = "results"
 
+    # --- Mem0 backend ---
+    # HF model name or local path for the mem0 embedder (a local path lets
+    # acceptance runs work without HuggingFace access).
+    mem0_embedder_model: str = "all-MiniLM-L6-v2"
+
     # --- Memory backends ---
     # SQLite file backing the `vector` memory backend (M6).
     vector_db_path: str = "results/memory_vector.db"
+    # On-disk Qdrant directory backing the `mem0` memory backend (M8).
+    # Mem0 runs Qdrant in local path mode here: no server, no network.
+    mem0_qdrant_path: str = "results/mem0_qdrant"

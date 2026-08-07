@@ -11,6 +11,7 @@ from collections.abc import Callable
 
 from ..core.config import Settings
 from .base import MemoryBackend
+from .mem0_adapter import Mem0Backend
 from .no_memory import NoMemoryBackend
 from .vector_memory import VectorMemoryBackend
 
@@ -46,15 +47,19 @@ def create_memory_backend(name: str, settings: Settings) -> MemoryBackend:
         available = ", ".join(available_backends())
         raise MemoryRegistryError(
             f"unknown memory backend {name!r}. Available now: {available}. "
-            "Other backends (mem0, letta) arrive in later milestones."
+            "Other backends (letta) arrive in later milestones."
         ) from None
     return factory(settings)
 
 
 # Built-in backends. `none` is the Phase-1 baseline (M4); `vector` is the
-# local SQLite baseline (M6).
+# local SQLite baseline (M6); `mem0` is the framework memory condition (M8).
 register_backend("none", lambda settings: NoMemoryBackend())
 register_backend(
     "vector",
     lambda settings: VectorMemoryBackend(db_path=settings.vector_db_path),
+)
+register_backend(
+    "mem0",
+    lambda settings: Mem0Backend(settings=settings),
 )

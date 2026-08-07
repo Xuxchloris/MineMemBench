@@ -76,7 +76,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--memory",
         default="none",
-        help="Memory backend name (none or vector).",
+        help="Memory backend name (none, vector, or mem0).",
     )
     run.add_argument(
         "--goal",

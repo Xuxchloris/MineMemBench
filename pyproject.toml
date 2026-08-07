@@ -21,6 +21,11 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
 ]
+# The `mem0` memory backend (M8). Kept optional so the core package and tests
+# run without the heavy SDK; the adapter imports mem0 lazily.
+mem0 = [
+    "mem0ai>=2.0.17,<3",
+]
 
 [project.scripts]
 minemembench = "minemembench.cli:main"
