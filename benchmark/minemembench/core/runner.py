@@ -92,6 +92,7 @@ class AgentRunner:
         *,
         max_steps: int = 10,
         success_at: Position | None = None,
+        episode_id: str | None = None,
     ) -> RunLog:
         """Loop until `success_at` is reached or `max_steps` is exhausted.
 
@@ -101,14 +102,21 @@ class AgentRunner:
         no positional finish line to check. Token totals cover the final call
         of each decision; retried calls are counted in `llm_calls` but their
         usage is not available.
+
+        `episode_id`, when given, is the run's episode id: the event
+        collector tags collected events with it and the planner scopes memory
+        retrieval to it, keeping concurrent runs sharing one backend
+        independent. When None, a fresh run_id is generated and used instead
+        (legacy behavior).
         """
 
         backend_stats = await self._memory.stats()
 
         run_id = new_run_id()
+        episode = episode_id if episode_id is not None else run_id
         collected_event_count = 0
         if self._event_collector is not None:
-            await self._event_collector.start(episode_id=run_id)
+            await self._event_collector.start(episode_id=episode)
 
         try:
             steps: list[RunStep] = []
@@ -120,7 +128,9 @@ class AgentRunner:
 
             for index in range(max_steps):
                 state = await self._bot.get_state()
-                decision = await self._planner.decide(goal, state, transcript)
+                decision = await self._planner.decide(
+                    goal, state, transcript, episode_id=episode
+                )
                 llm_calls += 1 + decision.retries
                 total_prompt_tokens += decision.llm.prompt_tokens
                 total_completion_tokens += decision.llm.completion_tokens

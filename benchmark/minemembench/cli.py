@@ -2,7 +2,7 @@
 
 Commands:
 - `probe`: Milestone-3 acceptance tool — check the bridge to the bot adapter.
-- `run`: run one goal-directed episode (M4); scenarios arrive in M7.
+- `run`: run one goal-directed episode (M4) or a full scenario harness (M7).
 """
 
 from __future__ import annotations
@@ -21,9 +21,13 @@ from .agent.llm_provider import LLMError, OpenAICompatibleProvider
 from .agent.planner import PlannerError
 from .core.client import BotBridgeError, BotClient
 from .core.config import Settings
+from .core.ids import new_run_id
 from .core.models import ActionResult, HealthResponse, Position, WorldState
 from .core.runner import AgentRunner, RunLog
+from .events.collector import EventCollector
 from .memory.registry import MemoryRegistryError, create_memory_backend
+from .scenarios.base import ScenarioContext, ScenarioResult
+from .scenarios.registry import ScenarioRegistryError, create_scenario
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -62,7 +66,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     run = subparsers.add_parser(
         "run",
-        help="Run one goal-directed episode against the bot adapter.",
+        help="Run one goal-directed episode, or a full scenario harness.",
     )
     run.add_argument(
         "--bot-url",
@@ -72,12 +76,15 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--memory",
         default="none",
-        help="Memory backend name (M4 ships only 'none').",
+        help="Memory backend name (none or vector).",
     )
     run.add_argument(
         "--goal",
-        required=True,
-        help="Natural-language goal for the agent, e.g. 'walk to 10,64,10'.",
+        default=None,
+        help=(
+            "Natural-language goal for the agent, e.g. 'walk to 10,64,10'. "
+            "Required in plain goal mode; ignored when --scenario is set."
+        ),
     )
     run.add_argument(
         "--success-at",
@@ -94,13 +101,19 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--scenario",
         default=None,
-        help="Reserved for M7; passing it is an error for now.",
+        help="Scenario name, e.g. delayed_recall; runs the scenario harness.",
+    )
+    run.add_argument(
+        "--runs",
+        type=int,
+        default=1,
+        help="Number of scenario runs (default 1).",
     )
     run.add_argument(
         "--seed",
         type=int,
-        default=None,
-        help="Accepted for reproducibility plumbing; unused until scenarios land.",
+        default=42,
+        help="Seeded RNG driving scenario phases (default 42).",
     )
     run.add_argument("--model", default=None, help="LLM model override.")
     run.add_argument(
@@ -247,10 +260,16 @@ async def _run_async(args: argparse.Namespace, settings: Settings) -> RunLog:
 
 def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:
     if args.scenario is not None:
-        print(
-            "error: --scenario is not available yet — scenarios arrive in M7.",
-            file=sys.stderr,
-        )
+        try:
+            create_scenario(args.scenario)
+        except ScenarioRegistryError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if args.runs < 1:
+            print("error: --runs must be >= 1", file=sys.stderr)
+            return 2
+    elif args.goal is None:
+        print("error: --goal is required unless --scenario is given", file=sys.stderr)
         return 2
 
     # CLI overrides win over env/.env for this process only.
@@ -258,8 +277,13 @@ def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:
         settings.llm_model = args.model
     if args.temperature is not None:
         settings.llm_temperature = args.temperature
-    # --seed is accepted for the future scenario harness; unused in M4.
 
+    if args.scenario is not None:
+        return _run_scenario_mode(args, settings)
+    return _run_plain_mode(args, settings)
+
+
+def _run_plain_mode(args: argparse.Namespace, settings: Settings) -> int:
     try:
         log = asyncio.run(_run_async(args, settings))
     except MemoryRegistryError as exc:
@@ -283,6 +307,90 @@ def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:
     out_path.write_text(log.to_json(), encoding="utf-8")
     print(f"run log written to {out_path}")
 
+    return 0
+
+
+async def _run_scenario_async(
+    args: argparse.Namespace, settings: Settings
+) -> list[ScenarioResult]:
+    memory = create_memory_backend(args.memory, settings)
+    llm = OpenAICompatibleProvider(settings)
+
+    async with BotClient(args.bot_url or settings.bot_url) as bot:
+        health = await bot.health()
+        if not health.connected:
+            raise BotBridgeError(
+                "bot adapter is reachable but not connected to a Minecraft server"
+            )
+        print(f"bot: {health.username} ({health.mode.value} mode)")
+
+        results: list[ScenarioResult] = []
+        for run_index in range(args.runs):
+            episode_id = new_run_id()
+            await memory.reset(episode_id)
+            collector = EventCollector(bot, memory)
+            runner = AgentRunner(bot, memory, llm, event_collector=collector)
+            ctx = ScenarioContext(
+                bot=bot,
+                memory=memory,
+                runner=runner,
+                llm=llm,
+                settings=settings,
+                seed=args.seed,
+                episode_id=episode_id,
+            )
+            scenario = create_scenario(args.scenario)
+            result = await scenario.run(ctx)
+            results.append(result)
+
+            results_dir = Path(settings.results_dir)
+            results_dir.mkdir(parents=True, exist_ok=True)
+            out_path = (
+                results_dir
+                / f"scenario_{scenario.name}_{args.memory}_{episode_id}.json"
+            )
+            out_path.write_text(result.to_json(), encoding="utf-8")
+            print(
+                f"run {run_index + 1}/{args.runs} "
+                f"[{scenario.name} / {args.memory} / seed={ctx.seed}]: "
+                f"success={result.success} "
+                f"task_success={result.metrics.get('task_success')} "
+                f"fact_retrieval_rank={result.metrics.get('fact_retrieval_rank')} "
+                f"final_distance={result.metrics.get('final_distance_to_target')}"
+            )
+            print(f"  scenario result written to {out_path}")
+        return results
+
+
+def _print_scenario_summary(
+    args: argparse.Namespace, results: list[ScenarioResult]
+) -> None:
+    n = len(results)
+    successes = sum(1 for result in results if result.success)
+    rate = successes / n if n else 0.0
+    print(
+        f"scenario {args.scenario} — memory={args.memory} runs={n} "
+        f"success_rate={successes}/{n} ({rate:.1%})"
+    )
+
+
+def _run_scenario_mode(args: argparse.Namespace, settings: Settings) -> int:
+    try:
+        results = asyncio.run(_run_scenario_async(args, settings))
+    except MemoryRegistryError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except (BotBridgeError, httpx.HTTPError, OSError) as exc:
+        print(f"error: cannot reach bot adapter: {exc}", file=sys.stderr)
+        return 1
+    except (LLMError, PlannerError) as exc:
+        print(f"error: agent loop failed: {exc}", file=sys.stderr)
+        return 1
+
+    _print_scenario_summary(args, results)
     return 0
 
 

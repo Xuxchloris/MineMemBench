@@ -123,6 +123,26 @@ async def test_decide_happy_path_includes_memories_in_prompt() -> None:
     assert "move_to" in system_message and "give_item" in system_message
 
 
+async def test_decide_scopes_retrieval_to_episode() -> None:
+    llm = FakeLLM([VALID_CHAT])
+    memory = StubMemory([_memory_item()])
+    planner = _make_planner(llm, memory)
+
+    await planner.decide("greet Steve", make_world_state(), episode_id="ep-42")
+
+    assert memory.queries[0].episode_id == "ep-42"
+
+
+async def test_decide_defaults_to_no_episode_filter() -> None:
+    llm = FakeLLM([VALID_CHAT])
+    memory = StubMemory([_memory_item()])
+    planner = _make_planner(llm, memory)
+
+    await planner.decide("greet Steve", make_world_state())
+
+    assert memory.queries[0].episode_id is None
+
+
 async def test_prose_wrapped_json_is_tolerated() -> None:
     llm = FakeLLM(
         ['Sure! {"action":"wait","arguments":{"seconds":1},"reason":"pause"} — done!']

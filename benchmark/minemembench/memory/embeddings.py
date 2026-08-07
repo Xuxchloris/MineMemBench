@@ -14,8 +14,8 @@ import math
 import re
 from typing import Protocol
 
-#: Bag-of-words dimension of HashEmbedder vectors.
-EMBED_DIM = 256
+#: Default bag-of-words dimension of HashEmbedder vectors.
+EMBED_DIM = 4096
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
@@ -33,7 +33,7 @@ class HashEmbedder:
     """Baseline embedder: hashed bag-of-words, deterministic and offline.
 
     Tokenizes on any non-alphanumeric character and lowercases, then hashes
-    every token with md5 into a fixed 256-dim bag-of-words vector that is
+    every token with md5 into a fixed `dim`-sized bag-of-words vector that is
     L2-normalized. Texts sharing tokens get positive cosine similarity;
     disjoint texts score zero (modulo hash collisions). Intentionally crude —
     it exists to make the vector backend run without any external embedding
@@ -42,12 +42,15 @@ class HashEmbedder:
 
     name = "hash"
 
-    @staticmethod
-    def embed(text: str) -> list[float]:
-        vector = [0.0] * EMBED_DIM
+    def __init__(self, dim: int = EMBED_DIM) -> None:
+        """Build an embedder whose vectors live in `dim` buckets."""
+        self.dim = dim
+
+    def embed(self, text: str) -> list[float]:
+        vector = [0.0] * self.dim
         for token in _TOKEN_PATTERN.findall(text.lower()):
             digest = hashlib.md5(token.encode("utf-8")).digest()
-            vector[digest[0]] += 1.0
+            vector[int.from_bytes(digest, "big") % self.dim] += 1.0
         return _l2_normalize(vector)
 
 

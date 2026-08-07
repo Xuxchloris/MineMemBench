@@ -119,9 +119,9 @@ class VectorMemoryBackend(MemoryBackend):
         """Return the `query.limit` most cosine-similar events, best first.
 
         Rows are filtered by `query.episode_id` (None = every episode). Score
-        is the raw cosine similarity; zero-similarity rows are retained so
-        callers can threshold on `score` themselves. `query.filters` is not
-        supported by this backend.
+        is the raw cosine similarity; rows with zero overlap (score <= 0.0)
+        are dropped, so unrelated memories never crowd out the relevant ones.
+        `query.filters` is not supported by this backend.
         """
 
         start = time.perf_counter()
@@ -141,6 +141,7 @@ class VectorMemoryBackend(MemoryBackend):
                 (cosine_similarity(query_vector, json.loads(row["vector_json"])), row)
                 for row in rows
             ]
+            scored = [pair for pair in scored if pair[0] > 0.0]
             scored.sort(key=lambda pair: pair[0], reverse=True)
             return [
                 MemoryItem(

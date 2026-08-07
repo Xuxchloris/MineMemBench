@@ -17,6 +17,7 @@ from minemembench.core.models import (
 )
 from minemembench.core.runner import AgentRunner, RunLog
 from minemembench.memory.no_memory import NoMemoryBackend
+from minemembench.memory.vector_memory import VectorMemoryBackend
 
 from .conftest import FakeLLM, make_world_state
 
@@ -205,3 +206,38 @@ async def test_run_log_without_collector_counts_zero() -> None:
     )
 
     assert log.collected_event_count == 0
+
+
+async def test_run_goal_uses_provided_episode_id_for_collector() -> None:
+    llm = FakeLLM([_move_to_output(10, 64, 10)])
+    collector = RecordingEventCollector([])
+    runner = AgentRunner(
+        FakeBotClient(), NoMemoryBackend(), llm, event_collector=collector
+    )
+
+    await runner.run_goal(
+        "go to (10, 64, 10)",
+        max_steps=5,
+        success_at=Position(x=10.0, y=64.0, z=10.0),
+        episode_id="ep-custom",
+    )
+
+    assert collector.start_calls == ["ep-custom"]
+
+
+async def test_run_goal_scopes_planner_memory_to_provided_episode(tmp_path) -> None:
+    """A provided episode_id hides other runs' events from the planner.
+
+    The shared db holds one event under episode "ep-1"; a run scoped to
+    "ep-2" must retrieve nothing, or the loop would see run 1's event.
+    """
+    memory = VectorMemoryBackend(str(tmp_path / "shared.db"))
+    await memory.add(_experience("e1", EventType.LOCATION_DISCOVERED))
+
+    llm = FakeLLM([WAIT_OUTPUT, WAIT_OUTPUT])
+    runner = AgentRunner(FakeBotClient(), memory, llm)
+
+    log = await runner.run_goal("recall the chest", max_steps=2, episode_id="ep-2")
+
+    assert log.run_id != "ep-2"  # run_id is still freshly generated
+    assert all(step.retrieved_memory_count == 0 for step in log.steps)

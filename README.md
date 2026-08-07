@@ -66,7 +66,7 @@ class MemoryBackend(ABC):
 | Backend | Status |
 |---|---|
 | `none` | implemented (M4) |
-| `vector` | planned (M6) |
+| `vector` | implemented (M6) |
 | `mem0` | planned (M8) |
 | `letta` | planned (M9) |
 
@@ -146,9 +146,9 @@ the benchmark.
 - [ ] M2 Mineflayer bot: login, state, move/chat
 - [ ] M3 Python ↔ bot bridge
 - [x] M4 NoMemory + LLM planner (agent loop)
-- [ ] M5 Event semantic layer (ExperienceEvent)
-- [ ] M6 Vector memory baseline
-- [ ] M7 Scenario A (Delayed Fact Recall) end-to-end
+- [x] M5 Event semantic layer (ExperienceEvent)
+- [x] M6 Vector memory baseline
+- [x] M7 Scenario A (Delayed Fact Recall) end-to-end
 - [ ] M8 Mem0 adapter (against current official docs)
 - [ ] M9 Letta adapter (against current official docs)
 - [ ] M10 Scenarios B + C

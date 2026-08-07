@@ -176,16 +176,23 @@ class Planner:
         goal: str,
         state: WorldState,
         history: list[TranscriptEntry] | None = None,
+        *,
+        episode_id: str | None = None,
     ) -> PlannedDecision:
         """Decide the next action.
 
         `history` is the episode transcript so far (most recent last); only
         the last MAX_TRANSCRIPT_ENTRIES entries reach the prompt. The list is
         never mutated. None means "no actions yet this episode".
+        `episode_id` scopes retrieval to one run so runs sharing a backend
+        never leak memories into each other; None retrieves across all
+        episodes (legacy behavior).
         """
 
         history = history if history is not None else []
-        memories = await self._memory.retrieve(MemoryQuery(query_text=goal))
+        memories = await self._memory.retrieve(
+            MemoryQuery(query_text=goal, episode_id=episode_id)
+        )
 
         messages: list[dict[str, str]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
