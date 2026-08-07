@@ -1,6 +1,7 @@
 """Pluggable memory backends for the benchmark."""
 
 from .base import MemoryBackend, MemoryItem, MemoryQuery, MemoryStats
+from .letta_adapter import LettaBackend
 from .mem0_adapter import Mem0Backend
 from .no_memory import NoMemoryBackend
 from .registry import (
@@ -17,6 +18,7 @@ __all__ = [
     "MemoryQuery",
     "MemoryRegistryError",
     "MemoryStats",
+    "LettaBackend",
     "Mem0Backend",
     "NoMemoryBackend",
     "VectorMemoryBackend",

@@ -45,3 +45,10 @@ class Settings(BaseSettings):
     # On-disk Qdrant directory backing the `mem0` memory backend (M8).
     # Mem0 runs Qdrant in local path mode here: no server, no network.
     mem0_qdrant_path: str = "results/mem0_qdrant"
+
+    # --- Letta backend (M9) ---
+    # Base URL of a Letta server: a self-hosted `letta/letta` container on
+    # 8283, or the Letta Cloud endpoint. Empty means the letta-client SDK
+    # falls back to its own defaults (see letta_client/_client.py). An API
+    # key is read by the SDK from the `LETTA_API_KEY` env var when present.
+    letta_base_url: str = "http://localhost:8283"
