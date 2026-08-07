@@ -67,8 +67,8 @@ class MemoryBackend(ABC):
 |---|---|
 | `none` | implemented (M4) |
 | `vector` | implemented (M6) |
-| `mem0` | planned (M8) |
-| `letta` | planned (M9) |
+| `mem0` | implemented (M8) |
+| `letta` | implemented (M9) |
 
 ## 4. Benchmark Scenarios
 
@@ -149,8 +149,8 @@ the benchmark.
 - [x] M5 Event semantic layer (ExperienceEvent)
 - [x] M6 Vector memory baseline
 - [x] M7 Scenario A (Delayed Fact Recall) end-to-end
-- [ ] M8 Mem0 adapter (against current official docs)
-- [ ] M9 Letta adapter (against current official docs)
-- [ ] M10 Scenarios B + C
+- [x] M8 Mem0 adapter (against current official docs)
+- [x] M9 Letta adapter (against current official docs)
+- [x] M10 Scenarios B + C
 - [ ] M11 Reports: CSV / Markdown / charts
 - [ ] Later: Graphiti, ReMe, Text2Mem, A-Mem, Generative Agents memory

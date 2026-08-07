@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from .base import Scenario
 from .delayed_recall import DelayedRecallScenario
+from .failure_learning import FailureLearningScenario
+from .world_update import WorldUpdateScenario
 
 
 class ScenarioRegistryError(Exception):
@@ -17,6 +19,8 @@ class ScenarioRegistryError(Exception):
 
 _SCENARIOS: dict[str, type[Scenario]] = {
     DelayedRecallScenario.name: DelayedRecallScenario,
+    WorldUpdateScenario.name: WorldUpdateScenario,
+    FailureLearningScenario.name: FailureLearningScenario,
 }
 
 
