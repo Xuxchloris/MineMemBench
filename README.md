@@ -68,7 +68,7 @@ class MemoryBackend(ABC):
 | `none` | implemented (M4) |
 | `vector` | implemented (M6) |
 | `mem0` | implemented (M8) |
-| `letta` | implemented (M9); live acceptance N/A (see Limitations) |
+| `letta` | implemented (M9); live server via `docker-compose.letta.yml` (see docs/letta_live.md) |
 | `graphiti` | implemented (P2); live acceptance N/A (see Limitations) |
 
 ## 4. Benchmark Scenarios
@@ -114,9 +114,15 @@ python -m minemembench probe --action chat --args '{"message":"hello"}'
 # Real server (accepts EULA — for local research use only)
 cd minecraft/server && java -jar server.jar nogui
 BOT_MOCK=0 node dist/index.js
+
+# Letta memory server (only needed for the `letta` backend)
+docker compose -f docker-compose.letta.yml up -d
+.venv/Scripts/python scripts/verify_letta_live.py
 ```
 
 Docker Compose (`docker-compose.yml`) wires mc-server + bot + benchmark together.
+`docker-compose.letta.yml` starts the optional Letta memory server and its
+ollama embedding service (see docs/letta_live.md).
 
 ## 7. How to Add a New Memory Backend
 
@@ -140,13 +146,15 @@ the benchmark.
 - High-level actions only — this benchmarks memory, not motor control.
 - Mem0/Letta adapters depend on those projects' evolving APIs; adapters pin and
   document the versions they were verified against.
-- Letta live acceptance is **N/A** on the reference machine, verified
-  empirically (2026-08, letta 0.16.8): no Docker is available, and the
-  pip-installed `letta server` hard-requires PostgreSQL — `letta/server/db.py`
-  builds a module-level PG engine and `settings.letta_pg_uri` defaults to
-  `postgresql+pg8000://letta:letta@localhost:5432/letta` (additional pip
-  friction: `asyncpg` missing, `mcp>=2` incompatible with `fastmcp 2.14`).
-  The adapter is covered by SDK-boundary tests against letta-client 1.12.1.
+- Letta runs live via `docker-compose.letta.yml` (letta/letta:0.16.8 with
+  embedded PG15+pgvector, plus an ollama service for `nomic-embed-text`
+  embeddings); see docs/letta_live.md and scripts/verify_letta_live.py.
+  Because letta archival passages round-trip **text only** (no structured event
+  context), the retrieval-layer structured-fact metrics are **N/A**
+  (`current_fact_accuracy` in world_update, `fact_retrieval_rank` in
+  delayed_recall), while the behavioral metrics (`task_success`, `stale_action`,
+  `adaptation`) are fully measured. Letta add/retrieve latency is ~200 ms per
+  call (HTTP + ollama embedding) vs single-digit ms for the local backends.
 - Graphiti live acceptance is **N/A** with the benchmark's controlled LLM,
   verified empirically (2026-08, graphiti-core 0.29.3 + embedded Kuzu): the
   adapter runs end-to-end (add_episode → search → reset), but graphiti's

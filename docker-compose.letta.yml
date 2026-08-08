@@ -1,0 +1,77 @@
+# Letta memory-server stack (M9): a self-hosted `letta/letta` stateful-agent
+# server plus a local Ollama service that supplies embeddings.
+#
+# This is intentionally a SEPARATE compose file: it must not touch the
+# Minecraft/bot/benchmark stack in docker-compose.yml. Start it with:
+#
+#   docker compose -f docker-compose.letta.yml up -d
+#
+# Notes on the architecture (verified against letta/letta:0.16.8 and the
+# current Letta docs, 2026-08):
+#   * The letta image embeds PostgreSQL 15 + pgvector; `LETTA_PG_URI` is NOT
+#     needed and no external database container is required. A named volume on
+#     /var/lib/postgresql/data persists the database.
+#   * The Letta server never runs inference in this benchmark: agents exist
+#     only to hold archival-memory passages. The LLM provider is configured
+#     solely so agent creation validates (server-side defaults below).
+#   * The LLM provider is DeepSeek (OpenAI-compatible) reached through Letta's
+#     OpenAI-compatible provider: OPENAI_API_KEY / OPENAI_BASE_URL reference
+#     the repo .env LLM_* variables, so no secret is duplicated here.
+#   * Embeddings come from the bundled Ollama service running the small
+#     `nomic-embed-text` model (an officially documented Letta provider).
+#     DeepSeek has no embeddings API; this keeps embeddings fully self-hosted.
+#   * DEFAULT_LLM_HANDLE / DEFAULT_EMBEDDING_HANDLE are official server
+#     settings applied when a client creates an agent without explicit
+#     model/embedding params (the LettaBackend adapter creates agents with
+#     `name` only, so these defaults keep it memory-only).
+#
+# All values come from environment / .env (see .env.example). No secrets are
+# hardcoded.
+
+services:
+  letta-ollama:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: 0.0.0.0
+    volumes:
+      - letta-ollama-models:/root/.ollama
+    # The ollama image's own entrypoint is `ollama`, so an explicit shell
+    # entrypoint is needed to serve and pull the embedding model on startup.
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama serve & sleep 3 && ollama pull ${LETTA_EMBEDDING_MODEL:-nomic-embed-text} && wait"]
+    healthcheck:
+      # Healthy only once the embedding model is actually pulled.
+      test: ["CMD-SHELL", "ollama list 2>/dev/null | grep -q ${LETTA_EMBEDDING_MODEL:-nomic-embed-text}"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+
+  letta-server:
+    image: letta/letta:0.16.8
+    depends_on:
+      letta-ollama:
+        condition: service_healthy
+    environment:
+      # LLM provider: DeepSeek via Letta's OpenAI-compatible provider.
+      OPENAI_API_KEY: ${LLM_API_KEY}
+      OPENAI_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com/v1}
+      # Embeddings: local Ollama service (compose service name resolution).
+      # The /v1 suffix matters: the server stores this value verbatim as the
+      # embedding base URL and calls <base_url>/embeddings on insert.
+      OLLAMA_BASE_URL: http://letta-ollama:11434/v1
+      # Server-side defaults so the memory-only adapter's `name`-only agent
+      # creation validates. These are fields of letta's main Settings class,
+      # which reads env vars with a `letta_` prefix (hence LETTA_*). The LLM
+      # handle is derived from the .env LLM_* vars; the ollama embedding handle
+      # carries the `:latest` tag that Ollama's /api/tags reports.
+      LETTA_DEFAULT_LLM_HANDLE: openai-proxy/${LLM_MODEL:-deepseek-v4-flash}
+      LETTA_DEFAULT_EMBEDDING_HANDLE: ${LETTA_EMBEDDING:-ollama/nomic-embed-text:latest}
+    ports:
+      - "127.0.0.1:8283:8283"
+    volumes:
+      - letta-server-data:/var/lib/postgresql/data
+
+volumes:
+  letta-ollama-models:
+  letta-server-data:
