@@ -26,6 +26,15 @@ dev = [
 mem0 = [
     "mem0ai>=2.0.17,<3",
 ]
+# The `graphiti` memory backend (M10): temporal knowledge graph on embedded
+# Kuzu. `sentence-transformers` (and its torch stack) is only needed for live
+# embedding; the adapter imports graphiti-core lazily, and the core package and
+# tests run without it.
+graphiti = [
+    "graphiti-core>=0.29,<1",
+    "kuzu>=0.11,<1",
+    "sentence-transformers>=3",
+]
 # Charts for the M11 report (`minemembench report`). Matplotlib is imported
 # lazily inside write_charts; the report command explains how to install it.
 report = [

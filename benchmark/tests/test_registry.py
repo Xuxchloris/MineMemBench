@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from minemembench.memory.graphiti_adapter import GraphitiBackend
 from minemembench.memory.letta_adapter import LettaBackend
 from minemembench.memory.mem0_adapter import Mem0Backend
 from minemembench.memory.no_memory import NoMemoryBackend
@@ -45,19 +46,29 @@ def test_create_letta_backend_is_lazy_without_server() -> None:
     assert backend._client is None  # client built lazily on first use
 
 
+def test_create_graphiti_backend_is_lazy(tmp_path) -> None:
+    # Constructing the backend must not import graphiti-core or build any
+    # client: the SDK is only imported inside the factory on first use.
+    settings = make_settings(graphiti_kuzu_path=str(tmp_path / "graphiti_kuzu"))
+    backend = create_memory_backend("graphiti", settings)
+    assert isinstance(backend, GraphitiBackend)
+    assert backend._graphiti is None  # client built lazily on first use
+
+
 def test_available_backends_lists_registered_names() -> None:
     assert "none" in available_backends()
     assert "vector" in available_backends()
     assert "mem0" in available_backends()
     assert "letta" in available_backends()
+    assert "graphiti" in available_backends()
 
 
 def test_unknown_backend_raises_clear_error() -> None:
     with pytest.raises(MemoryRegistryError) as exc_info:
-        create_memory_backend("graphiti", make_settings())
+        create_memory_backend("reme", make_settings())
 
     message = str(exc_info.value)
-    assert "'graphiti'" in message
+    assert "'reme'" in message
     assert "none" in message  # lists what IS available
     assert "vector" in message
-    assert "later milestones" in message
+    assert "graphiti" in message

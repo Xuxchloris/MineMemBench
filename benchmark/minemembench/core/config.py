@@ -52,3 +52,12 @@ class Settings(BaseSettings):
     # falls back to its own defaults (see letta_client/_client.py). An API
     # key is read by the SDK from the `LETTA_API_KEY` env var when present.
     letta_base_url: str = "http://localhost:8283"
+
+    # --- Graphiti backend (M10) ---
+    # On-disk directory backing the embedded Kuzu graph (`graphiti` backend).
+    # Kuzu runs in embedded no-server mode here: no network to a graph server.
+    graphiti_kuzu_path: str = "results/graphiti_kuzu"
+    # HF model name or local path for the graphiti embedder. Graphiti wraps it
+    # with sentence-transformers (a local path lets acceptance runs work without
+    # HuggingFace access).
+    graphiti_embedder_model: str = "all-MiniLM-L6-v2"

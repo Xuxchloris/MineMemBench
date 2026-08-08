@@ -32,3 +32,4 @@ Thumbs.db
 
 # Local model caches
 .models/
+.venv-letta/

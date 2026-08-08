@@ -11,6 +11,7 @@ from collections.abc import Callable
 
 from ..core.config import Settings
 from .base import MemoryBackend
+from .graphiti_adapter import GraphitiBackend
 from .letta_adapter import LettaBackend
 from .mem0_adapter import Mem0Backend
 from .no_memory import NoMemoryBackend
@@ -47,15 +48,15 @@ def create_memory_backend(name: str, settings: Settings) -> MemoryBackend:
     except KeyError:
         available = ", ".join(available_backends())
         raise MemoryRegistryError(
-            f"unknown memory backend {name!r}. Available now: {available}. "
-            "Other backends (graphiti) arrive in later milestones."
+            f"unknown memory backend {name!r}. Available now: {available}."
         ) from None
     return factory(settings)
 
 
 # Built-in backends. `none` is the Phase-1 baseline (M4); `vector` is the
 # local SQLite baseline (M6); `mem0` is the framework memory condition (M8);
-# `letta` is the stateful-agent server condition (M9).
+# `letta` is the stateful-agent server condition (M9); `graphiti` is the
+# temporal knowledge-graph condition (M10).
 register_backend("none", lambda settings: NoMemoryBackend())
 register_backend(
     "vector",
@@ -68,4 +69,8 @@ register_backend(
 register_backend(
     "letta",
     lambda settings: LettaBackend(settings=settings),
+)
+register_backend(
+    "graphiti",
+    lambda settings: GraphitiBackend(settings=settings),
 )

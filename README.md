@@ -68,7 +68,8 @@ class MemoryBackend(ABC):
 | `none` | implemented (M4) |
 | `vector` | implemented (M6) |
 | `mem0` | implemented (M8) |
-| `letta` | implemented (M9) |
+| `letta` | implemented (M9); live acceptance N/A (see Limitations) |
+| `graphiti` | implemented (P2); live acceptance N/A (see Limitations) |
 
 ## 4. Benchmark Scenarios
 
@@ -139,6 +140,22 @@ the benchmark.
 - High-level actions only — this benchmarks memory, not motor control.
 - Mem0/Letta adapters depend on those projects' evolving APIs; adapters pin and
   document the versions they were verified against.
+- Letta live acceptance is **N/A** on the reference machine, verified
+  empirically (2026-08, letta 0.16.8): no Docker is available, and the
+  pip-installed `letta server` hard-requires PostgreSQL — `letta/server/db.py`
+  builds a module-level PG engine and `settings.letta_pg_uri` defaults to
+  `postgresql+pg8000://letta:letta@localhost:5432/letta` (additional pip
+  friction: `asyncpg` missing, `mcp>=2` incompatible with `fastmcp 2.14`).
+  The adapter is covered by SDK-boundary tests against letta-client 1.12.1.
+- Graphiti live acceptance is **N/A** with the benchmark's controlled LLM,
+  verified empirically (2026-08, graphiti-core 0.29.3 + embedded Kuzu): the
+  adapter runs end-to-end (add_episode → search → reset), but graphiti's
+  OpenAI-tuned extraction prompts yield empty/thin graphs from DeepSeek
+  (v4-flash and v4-pro both return zero or near-zero entities and zero
+  relation edges in direct extraction probes), so no retrievable facts are
+  ever created. Two upstream Kuzu-driver bugs were shimmed in the adapter
+  (missing `_database`/`clone`, non-idempotent FTS index creation). The
+  adapter is covered by boundary tests with an injected fake client.
 
 ## 10. Roadmap
 
