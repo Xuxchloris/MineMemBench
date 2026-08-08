@@ -21,6 +21,7 @@ from .agent.llm_provider import LLMError, OpenAICompatibleProvider
 from .agent.planner import PlannerError
 from .core.client import BotBridgeError, BotClient
 from .core.config import Settings
+from .core.fairness import FairnessChecker
 from .core.ids import new_run_id
 from .core.models import ActionResult, HealthResponse, Position, WorldState
 from .core.runner import AgentRunner, RunLog
@@ -104,6 +105,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--scenario",
         default=None,
         help="Scenario name, e.g. delayed_recall; runs the scenario harness.",
+    )
+    run.add_argument(
+        "--scenario-param",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help=(
+            "Difficulty parameter for the selected scenario, repeatable, "
+            "e.g. --scenario-param interference_count=200. Recorded into every "
+            "run log for the fairness audit."
+        ),
     )
     run.add_argument(
         "--runs",
@@ -231,6 +243,40 @@ def _parse_success_at(raw: str) -> Position:
     return Position(x=x, y=y, z=z)
 
 
+def _coerce_param_value(value: str) -> Any:
+    """Parse a scenario-param string value into bool/int/float/str."""
+
+    lowered = value.lower()
+    if lowered in ("true", "false"):
+        return lowered == "true"
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    return value
+
+
+def _parse_scenario_params(entries: list[str]) -> dict[str, Any]:
+    """Parse repeated `--scenario-param KEY=VALUE` entries into a dict."""
+
+    params: dict[str, Any] = {}
+    for entry in entries:
+        if "=" not in entry:
+            raise ValueError(
+                f"--scenario-param must be KEY=VALUE, got {entry!r}"
+            )
+        key, value = entry.split("=", 1)
+        key = key.strip()
+        if not key:
+            raise ValueError(f"--scenario-param has an empty key in {entry!r}")
+        params[key] = _coerce_param_value(value)
+    return params
+
+
 def _print_run_log(log: RunLog) -> None:
     print(f"run {log.run_id} — memory={log.memory_backend} model={log.model} "
           f"temperature={log.temperature}")
@@ -317,10 +363,16 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:
+    scenario_params: dict[str, Any] = {}
     if args.scenario is not None:
         try:
-            create_scenario(args.scenario)
+            scenario = create_scenario(args.scenario)
+            scenario_params = _parse_scenario_params(args.scenario_param)
+            scenario.apply_params(scenario_params)
         except ScenarioRegistryError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         if args.runs < 1:
@@ -337,7 +389,7 @@ def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:
         settings.llm_temperature = args.temperature
 
     if args.scenario is not None:
-        return _run_scenario_mode(args, settings)
+        return _run_scenario_mode(args, settings, scenario_params)
     return _run_plain_mode(args, settings)
 
 
@@ -369,10 +421,13 @@ def _run_plain_mode(args: argparse.Namespace, settings: Settings) -> int:
 
 
 async def _run_scenario_async(
-    args: argparse.Namespace, settings: Settings
+    args: argparse.Namespace,
+    settings: Settings,
+    scenario_params: dict[str, Any],
 ) -> list[ScenarioResult]:
     memory = create_memory_backend(args.memory, settings)
     llm = OpenAICompatibleProvider(settings)
+    fairness_checker = FairnessChecker(settings, llm)
 
     async with BotClient(args.bot_url or settings.bot_url) as bot:
         health = await bot.health()
@@ -383,6 +438,8 @@ async def _run_scenario_async(
         print(f"bot: {health.username} ({health.mode.value} mode)")
 
         results: list[ScenarioResult] = []
+        previous_result: ScenarioResult | None = None
+        previous_episode: str | None = None
         for run_index in range(args.runs):
             episode_id = new_run_id()
             await memory.reset(episode_id)
@@ -398,7 +455,22 @@ async def _run_scenario_async(
                 episode_id=episode_id,
             )
             scenario = create_scenario(args.scenario)
+            scenario.apply_params(scenario_params)
             result = await scenario.run(ctx)
+
+            leak_probe_query = None
+            if previous_result is not None and previous_result.run_log is not None:
+                leak_probe_query = (
+                    f"{previous_result.scenario} {previous_result.run_log.goal}"
+                )
+            result.fairness = await fairness_checker.check(
+                memory=memory,
+                scenario=scenario.name,
+                scenario_params=scenario.params,
+                previous_episode=previous_episode,
+                next_episode=episode_id,
+                leak_probe_query=leak_probe_query,
+            )
             results.append(result)
 
             results_dir = Path(settings.results_dir)
@@ -408,15 +480,21 @@ async def _run_scenario_async(
                 / f"scenario_{scenario.name}_{args.memory}_{episode_id}.json"
             )
             out_path.write_text(result.to_json(), encoding="utf-8")
+            fairness_valid = (
+                result.fairness.valid if result.fairness is not None else True
+            )
             print(
                 f"run {run_index + 1}/{args.runs} "
                 f"[{scenario.name} / {args.memory} / seed={ctx.seed}]: "
                 f"success={result.success} "
                 f"task_success={result.metrics.get('task_success')} "
                 f"fact_retrieval_rank={result.metrics.get('fact_retrieval_rank')} "
-                f"final_distance={result.metrics.get('final_distance_to_target')}"
+                f"final_distance={result.metrics.get('final_distance_to_target')} "
+                f"fairness_valid={fairness_valid}"
             )
             print(f"  scenario result written to {out_path}")
+            previous_result = result
+            previous_episode = episode_id
         return results
 
 
@@ -432,9 +510,11 @@ def _print_scenario_summary(
     )
 
 
-def _run_scenario_mode(args: argparse.Namespace, settings: Settings) -> int:
+def _run_scenario_mode(
+    args: argparse.Namespace, settings: Settings, scenario_params: dict[str, Any]
+) -> int:
     try:
-        results = asyncio.run(_run_scenario_async(args, settings))
+        results = asyncio.run(_run_scenario_async(args, settings, scenario_params))
     except MemoryRegistryError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

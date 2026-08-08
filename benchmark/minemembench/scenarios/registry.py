@@ -1,4 +1,4 @@
-"""Name -> factory registry for benchmark scenarios (M7).
+"""Name -> factory registry for benchmark scenarios (M7 + M15B stress layer).
 
 New scenarios subclass `Scenario` and register a factory here; they become
 selectable via `--scenario`. The scenario harness never branches on scenario
@@ -10,6 +10,8 @@ from __future__ import annotations
 from .base import Scenario
 from .delayed_recall import DelayedRecallScenario
 from .failure_learning import FailureLearningScenario
+from .failure_transfer import FailureTransferScenario
+from .memory_noise_stress import MemoryNoiseStressScenario
 from .world_update import WorldUpdateScenario
 
 
@@ -21,6 +23,8 @@ _SCENARIOS: dict[str, type[Scenario]] = {
     DelayedRecallScenario.name: DelayedRecallScenario,
     WorldUpdateScenario.name: WorldUpdateScenario,
     FailureLearningScenario.name: FailureLearningScenario,
+    MemoryNoiseStressScenario.name: MemoryNoiseStressScenario,
+    FailureTransferScenario.name: FailureTransferScenario,
 }
 
 

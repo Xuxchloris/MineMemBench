@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     # --- Output location for benchmark results ---
     results_dir: str = "results"
 
+    # --- Pre-run fairness audit (M15B) ---
+    # Controlled variables recorded into every run log so a run's comparability
+    # can be audited from the log alone. Minecraft version defaults to "unknown"
+    # (it is not exposed by the bridge protocol); set it in .env for real runs.
+    minecraft_version: str = "unknown"
+    world_seed: int | None = None
+
     # --- Mem0 backend ---
     # HF model name or local path for the mem0 embedder (a local path lets
     # acceptance runs work without HuggingFace access).

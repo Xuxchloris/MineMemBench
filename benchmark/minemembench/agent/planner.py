@@ -12,6 +12,7 @@ Output contract is a single JSON object validated as `PlannerAction`.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from enum import Enum
 from typing import Any
@@ -56,6 +57,14 @@ Rules:
   already accomplished its purpose.
 - If memories contradict the current world state, trust the world state.
 """
+
+#: SHA-256 of the system prompt, recorded by the pre-run fairness audit so a
+#: run's exact planner instruction set can be verified from its log alone.
+SYSTEM_PROMPT_HASH = hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()
+
+#: SHA-256 of the action/tool specification (`_ACTION_SPECS`), recorded by the
+#: fairness audit so a run's tool set can be verified from its log alone.
+TOOL_SET_HASH = hashlib.sha256(_ACTION_SPECS.encode("utf-8")).hexdigest()
 
 
 class PlannerError(Exception):

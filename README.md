@@ -85,6 +85,38 @@ Scenarios are reproducible, seeded episodes with distinct phases
   follows. Measures whether memory changes *preparation behavior* — without any
   hard-coded "learn from failure" rule.
 
+### M15B — Long-Term Memory Stress Layer
+
+Phase 1's easy scenarios saturate (vector/mem0/letta all score ~100%), so the
+stress layer scales the difficulty until each framework starts to fail. Every
+difficulty knob is settable from the CLI with repeatable `--scenario-param
+KEY=VALUE` (no code changes), and the effective parameter dict is recorded into
+every run log for the fairness audit. Defaults reproduce the Phase-1 behavior
+byte-for-byte, so the 120-run matrix stays reproducible.
+
+| Scenario | Difficulty parameter(s) | New metrics |
+|---|---|---|
+| `delayed_recall` (A-stress) | `interference_count` 10/50/200/500, `similar_distractor_count` 0/5/20/50 | `recall_accuracy`, `wrong_fact_rate`, `retrieval_precision` (+ existing task/token/latency) |
+| `world_update` (B-stress) | `update_depth` 1=A→B, higher chains A→B→C→D | `stale_memory_rate`, `obsolete_fact_retrieval_rate`, `current_fact_accuracy`; raw retrieved items of every retrieval probe saved into the run log |
+| `memory_noise_stress` (D) | `noise_count` 0/10/50/100/200/500/1000 | `task_success`, `relevant_memory_precision`, `irrelevant_retrieval_rate`, `retrieval_latency`, `token_cost`, `end_to_end_latency` |
+| `failure_transfer` (E) | `transfer_count`, `noise_fact_count` | `adaptation_success`, `preparation_rate`, `failure_repetition_rate`, `transfer_success_rate` |
+
+Example CLI:
+
+```bash
+python -m minemembench run --scenario delayed_recall --memory vector \
+  --scenario-param interference_count=200 --scenario-param similar_distractor_count=20 \
+  --runs 30
+```
+
+Every run also carries a fairness record (Minecraft version, world seed, planner
+model, temperature, system-prompt hash, tool-set hash, scenario + parameter
+dict) and passes an episode-leakage probe: the next run must not be able to
+retrieve the previous episode's memories — a run that can is marked invalid in
+its log. See `docs/stress_design.md` for the design rationale. New stress
+metrics are stored per-run in the `scenario_*.json` logs (with unmeasured values
+as `N/A`); the M11 report aggregates the classic cross-scenario metrics.
+
 ## 5. Metrics
 
 Task success rate · recall accuracy · stale memory rate · behavioral adaptation
