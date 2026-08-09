@@ -39,9 +39,10 @@ async def test_delayed_recall_with_distractors_scores_stress_metrics(tmp_path) -
     # The similar facts crowd retrieval: a stale target-chest lookalike ranks
     # first (and the memory-naive LLM navigates to it), so navigation fails
     # even though the correct fact is still among the retrieved items. The
-    # retrieval-side metrics capture exactly that degradation.
+    # retrieval-side metrics capture exactly that degradation: the reported
+    # rank is the CORRECT fact's position (2), never the wrong lookalike's.
     assert result.metrics["task_success"] == 0
-    assert result.metrics["fact_retrieval_rank"] == 1
+    assert result.metrics["fact_retrieval_rank"] == 2
     assert result.metrics["recall_accuracy"] == 1
     assert result.metrics["wrong_fact_rate"] == 0.4
     assert result.metrics["retrieval_precision"] == 0.6
@@ -76,10 +77,12 @@ async def test_world_update_depth_three_chain(tmp_path) -> None:
     assert result.metrics["obsolete_fact_retrieval_rate"] == 0.75
     assert result.metrics["stale_action"] == 1
 
-    assert result.params == {"update_depth": 3}
+    assert result.params == {"update_depth": 3, "update_semantics_version": "legacy"}
     # Raw retrieval results are preserved in the run log (M15B requirement).
     assert len(result.retrieval_probes) == 1
     probe = result.retrieval_probes[0]
     assert probe.items
-    assert all(item.context.get("subject") == "supply_cache" for item in probe.items)
+    assert all(
+        item.event.context.get("subject") == "supply_cache" for item in probe.items
+    )
     assert len(probe.items) == 4  # A, B, C, D all retrieved

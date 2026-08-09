@@ -6,19 +6,24 @@ starts/stops nothing.
 
 Usage:
     .venv/Scripts/python scripts/verify_letta_live.py
+    .venv/Scripts/python scripts/verify_letta_live.py --require-live
 
 Flow:
   1. Read config from the repo .env via `Settings` (LETTA_BASE_URL, ...).
   2. If the Letta server is unreachable, print a clear SKIP message and exit 0
-     (offline machines and the pytest suite are unaffected).
+     (offline machines and the pytest suite are unaffected). With
+     `--require-live` (strict acceptance mode, used by QA) an unavailable
+     server exits NON-ZERO instead: acceptance cannot silently skip.
   3. Otherwise run three checks through the MemoryBackend interface with a real
      (non-injected) LettaBackend:
        A. add() an ExperienceEvent stating the target chest is at location A,
-          then retrieve() and assert a relevant memory really comes back from
-          the server.
+          then retrieve() and assert the server round-trips the EXACT event —
+          event_id, event_type, actor, target, context, and outcome all equal
+          to what was written (the passage-tag payload, no process-local
+          side channel).
        B. update() the same event to say the chest moved to location B, then
-          retrieve() and assert the result reflects the NEW information (and
-          not the stale location A).
+          retrieve() and assert the result is the exact NEW event and no
+          retrieved item still carries the stale location-A outcome.
        C. reset() the episode, then retrieve() and assert the old episode's
           memory cannot pollute a fresh episode.
   Each check prints PASS/FAIL; the script exits non-zero if any check fails.
@@ -29,6 +34,7 @@ it can be re-run safely against a long-lived server.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import sys
 import uuid
@@ -37,8 +43,8 @@ from datetime import UTC, datetime
 import httpx
 
 from minemembench.core.config import Settings
-from minemembench.core.models import EventType, ExperienceEvent
-from minemembench.memory.base import MemoryQuery
+from minemembench.core.models import EventType, ExperienceEvent, Position
+from minemembench.memory.base import MemoryItem, MemoryQuery
 from minemembench.memory.letta_adapter import LettaBackend
 
 #: How long to wait for a health probe / backend call before giving up.
@@ -71,7 +77,11 @@ async def _server_available(base_url: str) -> str | None:
 
 
 def _event(event_id: str, episode_id: str, outcome: str) -> ExperienceEvent:
-    """A WORLD_FACT_UPDATED event: the target chest's current location."""
+    """A WORLD_FACT_UPDATED event: the target chest's current location.
+
+    Carries a non-null `location` so the live round-trip check exercises every
+    field of the model, not only the scalar ones.
+    """
     return ExperienceEvent(
         event_id=event_id,
         episode_id=episode_id,
@@ -79,12 +89,13 @@ def _event(event_id: str, episode_id: str, outcome: str) -> ExperienceEvent:
         actor="agent",
         target="chest",
         event_type=EventType.WORLD_FACT_UPDATED,
+        location=Position(x=10.0, y=64.0, z=20.0),
         context={"target": "chest"},
         outcome=outcome,
     )
 
 
-def _first_with_item_id(items: list, event_id: str):
+def _first_with_item_id(items: list[MemoryItem], event_id: str) -> MemoryItem | None:
     """The first retrieved memory carrying `event_id`, or None."""
     for item in items:
         if item.item_id == event_id:
@@ -92,28 +103,50 @@ def _first_with_item_id(items: list, event_id: str):
     return None
 
 
+def _event_identity_mismatches(
+    expected: ExperienceEvent, actual: ExperienceEvent
+) -> list[str]:
+    """Field-by-field differences between the written and reconstructed event.
+
+    The semantic round-trip must be exact for the COMPLETE ExperienceEvent —
+    every model field, including `timestamp`, `location`, and `raw_events` —
+    so no information loss in any field can hide behind a partial comparison.
+    """
+    mismatches: list[str] = []
+    for field in type(expected).model_fields:
+        expected_value = getattr(expected, field)
+        actual_value = getattr(actual, field)
+        if expected_value != actual_value:
+            mismatches.append(f"{field}: {actual_value!r} != {expected_value!r}")
+    return mismatches
+
+
 async def check_a(backend: LettaBackend, episode_id: str) -> None:
-    """add() a fact, then retrieve() it back from the live server."""
+    """add() a fact, then retrieve() the EXACT same event back from the server."""
     event = _event("verify-a", episode_id, "the target chest is at location A (10, 64, 20)")
     await backend.add(event)
     items = await backend.retrieve(
         MemoryQuery(query_text="where is the target chest", episode_id=episode_id)
     )
     if not items:
-        _mark("A: add then retrieve returns a memory", False, "retrieval returned nothing")
+        _mark("A: add then retrieve round-trips the exact event", False,
+              "retrieval returned nothing")
         return
     best = _first_with_item_id(items, event.event_id)
     if best is None:
         detail = "returned items: " + ", ".join(i.item_id for i in items)
-        _mark("A: add then retrieve returns a memory", False, detail)
+        _mark("A: add then retrieve round-trips the exact event", False, detail)
         return
-    text = best.event.context.get("text", "")
-    ok = "location A" in text and "(10, 64, 20)" in text
-    _mark("A: add then retrieve returns a memory", ok, f"retrieved: {text[:80]!r}")
+    mismatches = _event_identity_mismatches(event, best.event)
+    _mark(
+        "A: add then retrieve round-trips the exact event",
+        not mismatches,
+        "; ".join(mismatches) if mismatches else "complete ExperienceEvent equal",
+    )
 
 
 async def check_b(backend: LettaBackend, episode_id: str) -> None:
-    """update() a fact, then assert retrieval reflects the new location.
+    """update() a fact, then assert retrieval returns the exact NEW event.
 
     Belief update: check_a has already stored this event (event_id `verify-a`,
     location A). update() must replace that passage in place, never append, so
@@ -127,12 +160,15 @@ async def check_b(backend: LettaBackend, episode_id: str) -> None:
     )
     best = _first_with_item_id(items, new.event_id)
     if best is None:
-        _mark("B: update reflects the new location", False, "event not found after update")
+        _mark("B: update round-trips the exact new event", False,
+              "event not found after update")
         return
-    text = best.event.context.get("text", "")
-    ok = "location B" in text and "(40, 64, 80)" in text and "location A" not in text
-    detail = f"retrieved: {text[:80]!r} (old 'location A' absent: {'location A' not in text})"
-    _mark("B: update reflects the new location", ok, detail)
+    mismatches = _event_identity_mismatches(new, best.event)
+    stale = [i.item_id for i in items if i.event.outcome and "location A" in i.event.outcome]
+    ok = not mismatches and not stale
+    detail = "; ".join(mismatches) if mismatches else "complete ExperienceEvent equal"
+    detail += f"; stale location-A items: {stale or 'none'}"
+    _mark("B: update round-trips the exact new event", ok, detail)
 
 
 async def check_c(backend: LettaBackend, episode_id: str, fresh_episode_id: str) -> None:
@@ -154,7 +190,18 @@ async def check_c(backend: LettaBackend, episode_id: str, fresh_episode_id: str)
     _mark("C: reset isolates the old episode from a fresh one", ok, detail)
 
 
-async def main() -> int:
+async def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--require-live",
+        action="store_true",
+        help=(
+            "Strict acceptance mode: exit non-zero when the Letta server is "
+            "unavailable instead of skipping. QA/acceptance runs must use this."
+        ),
+    )
+    args = parser.parse_args(argv)
+
     settings = Settings()
     base_url = settings.letta_base_url
 
@@ -164,6 +211,9 @@ async def main() -> int:
             f"SKIP: letta server not reachable at {base_url!r} "
             f"(offline or not started) - nothing to verify"
         )
+        if args.require_live:
+            print("FAIL: --require-live set; an unavailable server cannot pass")
+            return 2
         return 0
     print(f"letta server: {base_url} version={version}")
 

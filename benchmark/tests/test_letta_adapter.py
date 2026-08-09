@@ -206,7 +206,9 @@ async def test_add_retrieve_stats_contract() -> None:
     await backend.add(event)
 
     # add() creates one agent per episode and stores the rendered event with a
-    # parseable [event_id=...] prefix in the episode's archival memory.
+    # parseable [event_id=...] prefix in the episode's archival memory, plus
+    # the full event JSON in an `event_payload=` tag (tags are never part of
+    # the embedded text).
     create_kwargs = [kwargs for method, kwargs in fake.calls if method == "agents.create"]
     assert create_kwargs == [{"name": "mem-ep-1"}]
     passage_kwargs = [
@@ -214,17 +216,15 @@ async def test_add_retrieve_stats_contract() -> None:
     ]
     assert passage_kwargs[0]["text"].startswith("[event_id=e1] ")
     assert passage_kwargs[0]["text"].endswith(_render_text(event))
+    assert passage_kwargs[0]["tags"] == ["event_payload=" + event.model_dump_json()]
     assert passage_kwargs[0]["agent_id"] == fake.agent_id_for("ep-1")
 
     items = await backend.retrieve(MemoryQuery(query_text="where is the chest", episode_id="ep-1"))
     assert len(items) == 1
-    # No payload metadata is storable via the archival insert, so the event is
-    # a faithful reconstruction from the prefix: same event_id, rendered text
-    # stashed in context, neutral WORLD_FACT_UPDATED type.
+    # The payload tag round-trips the EXACT recorded event: every identifying
+    # field equals what was written, without any process-local side channel.
     assert items[0].item_id == "e1"
-    assert items[0].event.event_id == "e1"
-    assert items[0].event.event_type == EventType.WORLD_FACT_UPDATED
-    assert items[0].event.context["text"] == _render_text(event)
+    assert items[0].event == event
     assert items[0].score is None  # agent-level search returns no score
     assert items[0].created_at.tzinfo is not None
 
@@ -297,7 +297,26 @@ async def test_update_replaces_content_not_appends() -> None:
 
     items = await backend.retrieve(MemoryQuery(query_text="chest", episode_id="ep-1"))
     assert [item.item_id for item in items] == ["e1"]
-    assert items[0].event.context["text"].endswith("chest is at the south base")
+    # Exact round-trip: the retrieved event IS the updated event.
+    assert items[0].event.outcome == "chest is at the south base"
+
+
+async def test_legacy_passage_without_payload_tag_falls_back_to_prefix() -> None:
+    """A passage written without an `event_payload=` tag (older versions,
+    external tooling) still reconstructs minimally from the text prefix:
+    the stable event_id survives, the body is stashed as context text."""
+
+    fake = FakeLettaClient()
+    backend = _backend(fake)
+    await backend.add(_event("e1", "ep-1", outcome="chest at the base"))
+    agent_id = fake.agent_id_for("ep-1")
+    fake.passages[agent_id][0]["tags"] = []  # simulate a pre-payload passage
+
+    items = await backend.retrieve(MemoryQuery(query_text="chest", episode_id="ep-1"))
+    assert items[0].item_id == "e1"
+    assert items[0].event.event_id == "e1"
+    assert items[0].event.event_type == EventType.WORLD_FACT_UPDATED
+    assert items[0].event.context["text"].endswith("chest at the base")
 
 
 async def test_update_creates_when_event_missing() -> None:

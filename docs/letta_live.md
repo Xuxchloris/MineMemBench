@@ -74,17 +74,26 @@ interface (add/retrieve/update/reset; SKIPs with exit 0 when offline).
 * **Unusable built-in embedding entries.** The openai provider also registers
   `openai/text-embedding-*` defaults that point at DeepSeek; those 404 and must
   not be used. All passages use the Ollama embedding.
-* **Adapter-level constraints (unchanged, documented in the adapter docstring):**
-  no metadata on archival insert (event_id is prefixed into the text), no
-  in-place passage update (`update()` deletes + re-inserts), and the agent-scoped
-  archival search returns no relevance score (`MemoryItem.score` stays `None`).
+* **Adapter-level constraints (documented in the adapter docstring):** no
+  metadata on archival insert — the full ExperienceEvent JSON rides in an
+  `event_payload=` passage tag instead (tags round-trip verbatim and are never
+  embedded, so retrieval reconstructs the exact event server-side; the
+  `[event_id=...] ` text prefix remains for `update()` lookup and as a
+  fallback for payload-less passages) — no in-place passage update
+  (`update()` deletes + re-inserts), and the agent-scoped archival search
+  returns no relevance score (`MemoryItem.score` stays `None`).
 
 ## Verification
 
 ```
 .venv/Scripts/python scripts/verify_letta_live.py
+.venv/Scripts/python scripts/verify_letta_live.py --require-live   # strict acceptance
 ```
 
-Prints PASS for checks A (add then retrieve), B (update reflects the new
-location), C (reset isolates a fresh episode) against the live server, and exits
-non-zero on any failure; prints SKIP and exits 0 when the server is unreachable.
+Prints PASS for checks A (add then retrieve round-trips the exact event —
+id/type/actor/target/context/outcome all equal), B (update round-trips the
+exact new event, no stale location), C (reset isolates a fresh episode)
+against the live server, and exits non-zero on any failure. When the server is
+unreachable the default mode prints SKIP and exits 0; `--require-live`
+(strict acceptance mode, used by QA) exits non-zero instead, so an acceptance
+run can never silently skip.

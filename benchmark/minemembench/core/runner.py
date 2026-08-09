@@ -16,27 +16,43 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..agent.llm_provider import LLMProvider
 from ..agent.planner import Planner, TranscriptEntry
 from ..events.collector import EventCollector
-from ..memory.base import MemoryBackend
+from ..memory.base import MemoryBackend, MemoryItemSnapshot
 from .client import BotClient
 from .ids import new_run_id
-from .models import ActionStatus, Position
+from .models import ActionStatus, Position, WorldState
 
 #: A goal position counts as reached within this euclidean distance (blocks).
 SUCCESS_RADIUS_BLOCKS = 2.0
 
 
 class RunStep(BaseModel):
-    """One observe-decide-act iteration of the agent loop."""
+    """One observe-decide-act iteration of the agent loop.
+
+    `retrieved_items` snapshots the EXACT memories the planner retrieved for
+    this decision — the retrieval that caused the action — so behavioral
+    metrics can be tied to real retrieval evidence rather than a later,
+    separate probe. `retrieved_memory_count` is kept as its cheap summary.
+    """
 
     model_config = ConfigDict(validate_assignment=True)
 
     index: int = Field(ge=0)
     position: Position
+    #: The exact raw WorldState observed for this decision (timestamp
+    #: included). The planner prompt uses a normalized copy without the
+    #: volatile timestamp; this field preserves the unnormalized evidence.
+    world_state: WorldState | None = None
     retrieved_memory_count: int = Field(ge=0)
+    retrieved_items: list[MemoryItemSnapshot] = Field(default_factory=list)
     action: str
     arguments: dict[str, Any] = Field(default_factory=dict)
     reason: str
     action_status: ActionStatus
+    #: The exact error/result payload the environment returned for this
+    #: action (TASK-020), so failed transfer actions are auditable from the
+    #: run log alone. None when the action carried none (e.g. on success).
+    action_error: str | None = None
+    action_result: dict[str, Any] | None = None
     prompt_tokens: int = Field(ge=0)
     completion_tokens: int = Field(ge=0)
     latency_s: float = Field(ge=0.0)
@@ -148,11 +164,18 @@ class AgentRunner:
                     RunStep(
                         index=index,
                         position=position,
+                        world_state=state,
                         retrieved_memory_count=len(decision.retrieved_memories),
+                        retrieved_items=[
+                            MemoryItemSnapshot.from_item(item)
+                            for item in decision.retrieved_memories
+                        ],
                         action=decision.action.action.value,
                         arguments=decision.action.arguments,
                         reason=decision.action.reason,
                         action_status=result.status,
+                        action_error=result.error,
+                        action_result=result.result,
                         prompt_tokens=decision.llm.prompt_tokens,
                         completion_tokens=decision.llm.completion_tokens,
                         latency_s=decision.llm.latency_s,

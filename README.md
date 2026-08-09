@@ -18,9 +18,16 @@ Controlled variables across all runs: same world seed, same LLM, same system
 prompt, same tool set, same scenario, same temperature. The only independent
 variable is the **memory backend**.
 
-Phase 1 backends: `none` (baseline), `vector` (simple local baseline),
-`mem0`, `letta`. Reserved for later: Graphiti, ReMe, Text2Mem, A-Mem,
-Generative-Agents-style memory.
+Two execution identities are explicit in every result. **Native Mode** is for
+exploratory/live Minecraft behavior. **Controlled Mode** starts a fresh,
+versioned mock fixture per run and uses deterministic semantic events for
+causal backend comparisons. Native and Controlled evidence is never pooled.
+
+Phase 1 comparison backends: `none` (baseline), `vector` (simple local
+baseline), `mem0`, `letta`. A `graphiti` adapter is implemented, but live
+acceptance is N/A under the controlled DeepSeek extractor and it is excluded
+from the four-backend Controlled matrix. Reserved for later: ReMe, Text2Mem,
+A-Mem and Generative-Agents-style memory.
 
 ## 2. Architecture
 
@@ -87,24 +94,26 @@ Scenarios are reproducible, seeded episodes with distinct phases
 
 ### M15B — Long-Term Memory Stress Layer
 
-Phase 1's easy scenarios saturate (vector/mem0/letta all score ~100%), so the
-stress layer scales the difficulty until each framework starts to fail. Every
+Phase 1's easy scenarios often saturate, so the stress layer exposes versioned,
+configurable difficulty treatments. Every
 difficulty knob is settable from the CLI with repeatable `--scenario-param
 KEY=VALUE` (no code changes), and the effective parameter dict is recorded into
-every run log for the fairness audit. Defaults reproduce the Phase-1 behavior
-byte-for-byte, so the 120-run matrix stays reproducible.
+every run log for the fairness audit. Legacy defaults remain loadable for
+historical Native results; ranking-eligible Controlled treatments use the
+explicit v2 semantics below.
 
-| Scenario | Difficulty parameter(s) | New metrics |
+| Scenario / Controlled semantics | Difficulty parameter(s) | Current evidence boundary |
 |---|---|---|
-| `delayed_recall` (A-stress) | `interference_count` 10/50/200/500, `similar_distractor_count` 0/5/20/50 | `recall_accuracy`, `wrong_fact_rate`, `retrieval_precision` (+ existing task/token/latency) |
-| `world_update` (B-stress) | `update_depth` 1=A→B, higher chains A→B→C→D | `stale_memory_rate`, `obsolete_fact_retrieval_rate`, `current_fact_accuracy`; raw retrieved items of every retrieval probe saved into the run log |
-| `memory_noise_stress` (D) | `noise_count` 0/10/50/100/200/500/1000 | `task_success`, `relevant_memory_precision`, `irrelevant_retrieval_rate`, `retrieval_latency`, `token_cost`, `end_to_end_latency` |
-| `failure_transfer` (E) | `transfer_count`, `noise_fact_count` | `adaptation_success`, `preparation_rate`, `failure_repetition_rate`, `transfer_success_rate` |
+| `delayed_recall / entity_key_v2` | `(interference_count, similar_distractor_count)` planned as (10,0)/(50,5)/(200,20)/(500,50) | v2 (200,20) diagnostic only; legacy rounds are non-poolable |
+| `world_update / temporal_chain_v2` | `update_depth` 1–4; depth 3 is A→B→C→D | depth-3 diagnostic accepted; remaining curve gated |
+| `memory_noise_stress / key_retention_v2` | `noise_count` 0/10/50/100/200/500/1000 | 0/10/50 diagnostics accepted, then stopped; no formal Failure Point |
+| `failure_learning / observed_precondition_v2` | `interference_count` | real failed ActionResult → different-entity transfer; 0/10/50 diagnostics accepted, then stopped |
+| `failure_transfer` | — | **SUSPENDED / unregistered**: fabricated causal failure, invalid for claims |
 
-Example CLI:
+Configuration example only (not an experiment authorization):
 
 ```bash
-python -m minemembench run --scenario delayed_recall --memory vector \
+.venv/Scripts/python -m minemembench run --scenario delayed_recall --memory vector \
   --scenario-param interference_count=200 --scenario-param similar_distractor_count=20 \
   --runs 30
 ```
@@ -116,6 +125,27 @@ retrieve the previous episode's memories — a run that can is marked invalid in
 its log. See `docs/stress_design.md` for the design rationale. New stress
 metrics are stored per-run in the `scenario_*.json` logs (with unmeasured values
 as `N/A`); the M11 report aggregates the classic cross-scenario metrics.
+
+New Controlled manifests use `controlled-campaign/v4`: before run 1 they record
+a deterministic SHA-256 fingerprint of the allowlisted producer source/test/
+config tree plus read-only git commit/dirty state. Each result repeats the
+compact provenance in its fairness record, and a mismatch stops the campaign.
+`--require-clean-source` rejects a dirty/unavailable git tree before creating
+output. This provenance does not replace a reviewed commit or formal
+preregistration; see `docs/development_plan.md` and
+`docs/preregistration_template.md`.
+
+After the external review owner creates a clean candidate commit, verify it
+without starting a campaign or creating output:
+
+```powershell
+.venv\Scripts\python scripts\verify_source_freeze.py --require-clean `
+  --expected-source-fingerprint <A-approved-sha256> `
+  --expected-git-commit <reviewed-commit-sha>
+```
+
+The verifier prints compact hashes/counts/booleans only. Diagnostic mode
+without `--require-clean` may inspect a dirty tree but does not authorize it.
 
 ## 5. Metrics
 
@@ -175,18 +205,28 @@ the benchmark.
 
 - Single agent, single environment (Minecraft). No multi-agent claims.
 - LLM planner behavior is stochastic; conclusions need multiple seeded runs.
+- Current M15 Controlled evidence uses three paired seeds per cell on versioned
+  mock fixtures. It is diagnostic, not a formal ranking, effect size, Failure
+  Point, Native-Minecraft result, or cost-efficiency comparison.
+- The working evidence revision is currently dirty. Formal campaigns require a
+  clean externally reviewed commit, frozen preregistration and
+  `--require-clean-source`; source fingerprints alone do not make old evidence
+  formal.
 - High-level actions only — this benchmarks memory, not motor control.
 - Mem0/Letta adapters depend on those projects' evolving APIs; adapters pin and
   document the versions they were verified against.
 - Letta runs live via `docker-compose.letta.yml` (letta/letta:0.16.8 with
   embedded PG15+pgvector, plus an ollama service for `nomic-embed-text`
-  embeddings); see docs/letta_live.md and scripts/verify_letta_live.py.
-  Because letta archival passages round-trip **text only** (no structured event
-  context), the retrieval-layer structured-fact metrics are **N/A**
-  (`current_fact_accuracy` in world_update, `fact_retrieval_rank` in
-  delayed_recall), while the behavioral metrics (`task_success`, `stale_action`,
-  `adaptation`) are fully measured. Letta add/retrieve latency is ~200 ms per
-  call (HTTP + ollama embedding) vs single-digit ms for the local backends.
+  embeddings); see docs/letta_live.md and scripts/verify_letta_live.py
+  (`--require-live` for strict acceptance runs). Every archival passage
+  carries the full `ExperienceEvent` JSON in an `event_payload=` tag
+  (round-trips verbatim, never embedded — verified live against 0.16.8), so
+  retrieval reconstructs the exact recorded event and the retrieval-layer
+  structured-fact metrics are measured for letta too; the earlier text-only
+  limitation no longer applies. Letta add/retrieve latency is ~200 ms per
+  call (HTTP + ollama embedding) vs single-digit ms for the local backends,
+  and the agent-scoped archival search returns no relevance score
+  (`MemoryItem.score` stays `None`).
 - Graphiti live acceptance is **N/A** with the benchmark's controlled LLM,
   verified empirically (2026-08, graphiti-core 0.29.3 + embedded Kuzu): the
   adapter runs end-to-end (add_episode → search → reset), but graphiti's
@@ -200,8 +240,8 @@ the benchmark.
 ## 10. Roadmap
 
 - [x] M1 repo skeleton, protocol, config
-- [ ] M2 Mineflayer bot: login, state, move/chat
-- [ ] M3 Python ↔ bot bridge
+- [x] M2 Mineflayer bot: login, state, move/chat
+- [x] M3 Python ↔ bot bridge
 - [x] M4 NoMemory + LLM planner (agent loop)
 - [x] M5 Event semantic layer (ExperienceEvent)
 - [x] M6 Vector memory baseline
@@ -210,4 +250,7 @@ the benchmark.
 - [x] M9 Letta adapter (against current official docs)
 - [x] M10 Scenarios B + C
 - [x] M11 Reports: CSV / Markdown / charts
+- [x] M15A Letta Docker live memory-only integration
+- [x] M15B versioned stress scenarios + Controlled diagnostic infrastructure
+- [ ] Formal preregistered M15 study on a clean reviewed revision
 - [ ] Later: Graphiti, ReMe, Text2Mem, A-Mem, Generative Agents memory

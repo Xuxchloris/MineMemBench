@@ -25,12 +25,20 @@ Design notes (all verified against the installed letta_client 1.12.1 source):
   defaulted server-side (never run inference).
 * Passages do NOT support metadata at insert: the archival-memory insert
   endpoint accepts only `text`/`created_at`/`tags`
-  (letta_client/types/agents/passage_create_params.py). So the `event_id` is
-  prefixed into the stored text in a parseable form — `[event_id=...] ` — and
-  parsed back out on retrieval. If a passage ever carries an `event_payload`
-  metadata (e.g. inserted through a metadata-capable path), that is preferred.
+  (letta_client/types/agents/passage_create_params.py). The full
+  ExperienceEvent JSON is therefore carried in a single passage tag
+  (`event_payload=<json>`): tags are stored and returned verbatim by the
+  server but are NOT part of the embedded text, so retrieval semantics stay
+  unchanged while retrieval can reconstruct the exact recorded event
+  server-side (verified live against letta/letta:0.16.8, 2026-08, including
+  multi-KB payloads). The `event_id` is additionally prefixed into the stored
+  text in a parseable form — `[event_id=...] ` — so `update()` can locate the
+  passage; the prefix is parsed back out on retrieval as a fallback when a
+  passage carries no payload tag (e.g. written by older versions or external
+  tooling). If a passage ever carries an `event_payload` metadata (e.g.
+  inserted through a metadata-capable path), that is preferred after the tag.
 * The agent-scoped archival search (`client.agents.passages.search`) returns
-  results with only `id`/`content`/`timestamp`/`tags` and NO relevance score
+  results with `id`/`content`/`timestamp`/`tags` and NO relevance score
   (letta_client/types/agents/passage_search_response.py). `MemoryItem.score`
   is therefore `None` when the client returns none — we never invent a score.
 * There is no in-place passage update endpoint (the archival-memory resource
@@ -60,6 +68,11 @@ logger = logging.getLogger(__name__)
 #: the standard archival insert does not support metadata, so this is only
 #: exercised by metadata-capable insert paths / injected fakes).
 _PAYLOAD_KEY = "event_payload"
+#: Tag prefix carrying the full ExperienceEvent JSON on every passage. Tags
+#: round-trip verbatim through the server and are never embedded, so the
+#: exact recorded event is reconstructable without a process-local side
+#: channel and without touching the embedding text.
+_TAG_PAYLOAD_PREFIX = "event_payload="
 #: Prefix carrying the ExperienceEvent's id in the stored passage text.
 _PREFIX = "[event_id={event_id}] {text}"
 #: Parser for the `[event_id=...] ` prefix (event ids contain no `]`).
@@ -110,6 +123,17 @@ def _parse_prefix(text: str) -> tuple[str | None, str]:
     if match is None:
         return None, text
     return match.group("event_id"), match.group("text")
+
+
+def _payload_from_tags(tags: Any) -> str | None:
+    """The event-payload JSON carried in a passage's tags, if any."""
+
+    if not isinstance(tags, (list, tuple)):
+        return None
+    for tag in tags:
+        if isinstance(tag, str) and tag.startswith(_TAG_PAYLOAD_PREFIX):
+            return tag[len(_TAG_PAYLOAD_PREFIX):]
+    return None
 
 
 def _build_letta_client(settings: Settings) -> Any:
@@ -192,6 +216,7 @@ class LettaBackend(MemoryBackend):
         client.agents.passages.create(
             agent_id=agent_id,
             text=_PREFIX.format(event_id=event.event_id, text=_render_text(event)),
+            tags=[_TAG_PAYLOAD_PREFIX + event.model_dump_json()],
         )
 
     async def retrieve(self, query: MemoryQuery) -> list[MemoryItem]:
@@ -253,7 +278,8 @@ class LettaBackend(MemoryBackend):
             if isinstance(value, str)
         }
         text = _get(result, "text") or _get(result, "content") or ""
-        event = self._reconstruct_event(result, episode_id, text, metadata)
+        tags = _get(result, "tags") or []
+        event = self._reconstruct_event(result, episode_id, text, metadata, tags)
         return MemoryItem(
             item_id=event.event_id,
             event=event,
@@ -270,16 +296,19 @@ class LettaBackend(MemoryBackend):
         episode_id: str,
         text: str,
         metadata: dict[str, str],
+        tags: list[Any],
     ) -> ExperienceEvent:
-        """Reconstruct the recorded event, payload metadata first, prefix next.
+        """Reconstruct the recorded event: payload tag, then metadata, then prefix.
 
-        Returns the exact recorded event when an `event_payload` is available;
-        otherwise a minimal reconstruction from the `[event_id=...] ` prefix
-        (an event's full JSON is not stored because the archival insert does
-        not accept metadata).
+        The `event_payload=` tag is written by this adapter on every insert and
+        round-trips verbatim through the server, so it yields the EXACT
+        recorded event. A metadata `event_payload` (metadata-capable insert
+        paths) is preferred next; the `[event_id=...] ` text prefix is the
+        last-resort minimal reconstruction for passages written without a
+        payload (older versions, external tooling).
         """
 
-        payload_json = metadata.get(_PAYLOAD_KEY)
+        payload_json = _payload_from_tags(tags) or metadata.get(_PAYLOAD_KEY)
         if payload_json:
             try:
                 return ExperienceEvent.model_validate(json.loads(payload_json))

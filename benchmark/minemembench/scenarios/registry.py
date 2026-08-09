@@ -10,7 +10,6 @@ from __future__ import annotations
 from .base import Scenario
 from .delayed_recall import DelayedRecallScenario
 from .failure_learning import FailureLearningScenario
-from .failure_transfer import FailureTransferScenario
 from .memory_noise_stress import MemoryNoiseStressScenario
 from .world_update import WorldUpdateScenario
 
@@ -24,7 +23,11 @@ _SCENARIOS: dict[str, type[Scenario]] = {
     WorldUpdateScenario.name: WorldUpdateScenario,
     FailureLearningScenario.name: FailureLearningScenario,
     MemoryNoiseStressScenario.name: MemoryNoiseStressScenario,
-    FailureTransferScenario.name: FailureTransferScenario,
+    # `failure_transfer` is deliberately NOT registered (TASK-002 safety
+    # gate): it fabricates the missing-tool failure and its solution instead
+    # of deriving them from an observed failed action, so its endpoints are
+    # research-invalid (N/A) pending a redesign around real observed failure
+    # causes. The module stays in the tree as a development artifact only.
 }
 
 

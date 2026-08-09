@@ -18,7 +18,11 @@ from minemembench.memory.base import MemoryQuery
 from minemembench.memory.no_memory import NoMemoryBackend
 from minemembench.memory.vector_memory import VectorMemoryBackend
 from minemembench.scenarios.base import ScenarioContext
-from minemembench.scenarios.delayed_recall import GOAL, DelayedRecallScenario
+from minemembench.scenarios.delayed_recall import (
+    GOAL,
+    DelayedRecallScenario,
+    compute_recall_metrics,
+)
 from minemembench.scenarios.registry import available_scenarios
 
 from .conftest import make_settings, make_world_state
@@ -182,12 +186,73 @@ async def test_no_memory_cannot_recall() -> None:
     assert result.success is False
     assert result.metrics["task_success"] == 0
     assert result.metrics["fact_retrieval_rank"] is None
+    # NoMemory's actual first-step retrieval is EMPTY, and the empty
+    # retrieval is a measured miss, not an N/A.
+    assert result.run_log is not None
+    assert result.run_log.steps[0].retrieved_items == []
+    assert result.metrics["recall_accuracy"] == 0
+    assert result.metrics["wrong_fact_rate"] is None
+    assert result.metrics["retrieval_precision"] is None
     assert result.metrics["avg_add_latency_ms"] is None
     assert result.metrics["avg_retrieve_latency_ms"] is None
 
-    assert result.run_log is not None
     assert result.run_log.success is False
     assert len(result.run_log.steps) == 3  # waited out the whole budget
+
+
+async def test_headline_metrics_come_from_the_first_decisions_retrieval(
+    tmp_path,
+) -> None:
+    """The headline retrieval metrics are computed from the EXACT retrieval
+    recorded on the first run step — the one that caused the action — and the
+    evaluation-time probe is diagnostic-only evidence."""
+
+    memory = VectorMemoryBackend(str(tmp_path / "mem.db"))
+    scenario = DelayedRecallScenario()
+    llm = SmartFakeLLM()
+    settings = make_settings()
+    bot = FakeBotClient()
+    runner = AgentRunner(bot, memory, llm)
+    ctx = ScenarioContext(
+        bot=bot,
+        memory=memory,
+        runner=runner,
+        llm=llm,
+        settings=settings,
+        seed=42,
+        episode_id="ep-delayed-recall",
+    )
+    result = await scenario.run(ctx)
+
+    assert result.run_log is not None
+    step0_items = result.run_log.steps[0].retrieved_items
+    assert step0_items  # the planner really saw memories on step 0
+    assert scenario.target_event_id is not None
+
+    # Recomputing the metrics from the recorded step-0 retrieval reproduces
+    # the reported headline values exactly: the saved retrieval IS the input.
+    recomputed = compute_recall_metrics(
+        step0_items, scenario.target_event_id, scenario.wrong_fact_ids
+    )
+    assert result.metrics["fact_retrieval_rank"] == recomputed["fact_retrieval_rank"]
+    assert result.metrics["recall_accuracy"] == recomputed["recall_accuracy"]
+    assert result.metrics["wrong_fact_rate"] == recomputed["wrong_fact_rate"]
+    assert result.metrics["retrieval_precision"] == recomputed["retrieval_precision"]
+    assert (
+        result.metrics["retrieval_evidence_source"]
+        == "run_log.steps[0].retrieved_items"
+    )
+
+    # The recorded evidence carries the full event, not just an id.
+    target_hits = [
+        item for item in step0_items if item.event.event_id == scenario.target_event_id
+    ]
+    assert target_hits
+    assert target_hits[0].event.context.get("subject") == "target_chest"
+
+    # The evaluation-time probe survives as diagnostic raw evidence only.
+    assert len(result.retrieval_probes) == 1
+    assert result.retrieval_probes[0].phase == "evaluate-diagnostic"
 
 
 async def test_noise_facts_never_leak_the_target(tmp_path) -> None:

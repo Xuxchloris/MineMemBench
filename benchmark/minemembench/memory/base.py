@@ -47,6 +47,37 @@ class MemoryStats(_ContractModel):
     extra: dict[str, Any] = Field(default_factory=dict)
 
 
+class MemoryItemSnapshot(_ContractModel):
+    """A serializable snapshot of one retrieved `MemoryItem`.
+
+    Used wherever raw retrieval evidence must survive in a run log (per-step
+    planner evidence, evaluation probes): it carries the full reconstructed
+    `ExperienceEvent` (event_id, episode_id, timestamp, actor, target,
+    event_type, location, context, outcome, raw_events) plus the item's score,
+    creation time, and backend metadata, so every retrieval-side metric can be
+    re-derived from the log alone. Memory contents only — never prompts or
+    secrets.
+    """
+
+    item_id: str
+    score: float | None
+    created_at: datetime
+    metadata: dict[str, str] = Field(default_factory=dict)
+    event: ExperienceEvent
+
+    @classmethod
+    def from_item(cls, item: MemoryItem) -> MemoryItemSnapshot:
+        """Snapshot one retrieved item as returned by the backend."""
+
+        return cls(
+            item_id=item.item_id,
+            score=item.score,
+            created_at=item.created_at,
+            metadata=dict(item.metadata),
+            event=item.event,
+        )
+
+
 class MemoryBackend(ABC):
     """Unified interface every memory backend must implement."""
 
@@ -69,3 +100,37 @@ class MemoryBackend(ABC):
     @abstractmethod
     async def stats(self) -> MemoryStats:
         """Report backend name, item count, and backend-specific extras."""
+
+
+class EventRecordingBackend(MemoryBackend):
+    """A pass-through proxy that records every event offered to the backend.
+
+    The benchmark harness wraps the per-run backend in this proxy so the run
+    log can carry the COMPLETE sequence of events passed to `add`/`update` —
+    the actual campaign inputs — for every backend, including `none`. The
+    record is append-only: a later `reset()` does not erase it (the audit
+    needs what was offered, not what survived). Retrieval/reset/stats delegate
+    unchanged; no behavior differs per backend name.
+    """
+
+    def __init__(self, inner: MemoryBackend) -> None:
+        self._inner = inner
+        #: Every event offered to add()/update(), in offer order.
+        self.offered_events: list[ExperienceEvent] = []
+
+    async def add(self, event: ExperienceEvent) -> None:
+        self.offered_events.append(event)
+        await self._inner.add(event)
+
+    async def retrieve(self, query: MemoryQuery) -> list[MemoryItem]:
+        return await self._inner.retrieve(query)
+
+    async def update(self, event: ExperienceEvent) -> None:
+        self.offered_events.append(event)
+        await self._inner.update(event)
+
+    async def reset(self, episode_id: str) -> None:
+        await self._inner.reset(episode_id)
+
+    async def stats(self) -> MemoryStats:
+        return await self._inner.stats()

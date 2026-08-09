@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import UTC, datetime
 
 import httpx
 import pytest
 
 from minemembench.agent.planner import (
+    MEMORY_VIEW_FIELDS,
+    PLANNER_USER_TEMPLATE_HASH,
     ActionName,
     Planner,
     PlannerError,
     TranscriptEntry,
+    _USER_SECTION_LABELS,
+    memory_view_for_prompt,
 )
 from minemembench.core.client import BotClient
 from minemembench.core.models import (
@@ -116,7 +122,12 @@ async def test_decide_happy_path_includes_memories_in_prompt() -> None:
     assert '"x": 0.0' in user_message  # world-state JSON is embedded
     assert "Recent actions this episode" in user_message
     assert "Retrieved long-term memories" in user_message
-    assert "m1" in user_message  # the retrieved memory is serialized in
+    # The memory section carries semantic content only — the backend-neutral
+    # view (TASK-007), never ids/scores/metadata.
+    assert "collect stone" in user_message
+    assert "collected 12 stone" in user_message
+    assert "m1" not in user_message  # item/event ids never reach the planner
+    assert "0.9" not in user_message.split("Retrieved long-term memories")[1]
 
     # System prompt documents the protocol actions.
     system_message = llm.calls[0][0]["content"]
@@ -223,3 +234,108 @@ async def test_episode_transcript_is_included_in_prompt() -> None:
     user_message = llm.calls[0][1]["content"]
     assert "Recent actions this episode" in user_message
     assert '"greet"' in user_message  # transcript entry is serialized in
+
+
+# --- TASK-007: backend-neutral planner memory view ----------------------------
+
+
+def test_memory_view_for_prompt_strips_all_nonsemantic_fields() -> None:
+    """The prompt view contains ONLY semantic event fields — including the
+    semantic event timestamp (TASK-009) — and never item/event ids, episode
+    id, score, created_at, metadata, or raw events."""
+
+    item = _memory_item()  # item_id/event_id "m1", score 0.9, created_at set
+    view = memory_view_for_prompt(item)
+
+    assert set(view) == {"event"}
+    assert set(view["event"]) == {
+        "actor",
+        "target",
+        "event_type",
+        "location",
+        "context",
+        "outcome",
+        "timestamp",
+    }
+    # The semantic event timestamp is present, exactly as a JSON value.
+    assert view["event"]["timestamp"] == item.event.timestamp.isoformat()
+
+    serialized = json.dumps(view)
+    for banned in (
+        "m1",
+        "ep-1",
+        "0.9",
+        "item_id",
+        "event_id",
+        "episode_id",
+        "raw_events",
+        "created_at",
+        "metadata",
+        "score",
+    ):
+        assert banned not in serialized
+
+    # Semantic content survives intact.
+    assert view["event"]["actor"] == "agent"
+    assert view["event"]["event_type"] == "task_succeeded"
+    assert view["event"]["context"] == {"task": "collect stone"}
+    assert view["event"]["outcome"] == "collected 12 stone"
+    assert view["event"]["target"] is None
+    assert view["event"]["location"] is None
+
+
+def test_memory_view_preserves_retrieved_order() -> None:
+    """Retrieval order is the only ordering cue; the view must keep it."""
+
+    first = _memory_item()
+    second = _memory_item().model_copy(
+        update={"event": _memory_item().event.model_copy(
+            update={"outcome": "collected 99 stone"}
+        )}
+    )
+    llm = FakeLLM([VALID_CHAT])
+    planner = _make_planner(llm, StubMemory([first, second]))
+
+    message = planner._build_user_message(
+        "goal", make_world_state(), [first, second], []
+    )
+    section = message.split("Retrieved long-term memories (JSON):\n", 1)[1]
+    views = json.loads(section)
+    assert [view["event"]["outcome"] for view in views] == [
+        "collected 12 stone",
+        "collected 99 stone",
+    ]
+
+
+# --- TASK-009: planner user-template fingerprint -------------------------------
+
+
+def _fingerprint_material(labels: list[str], fields: list[str]) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            {"user_section_labels": labels, "memory_view_fields": fields},
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def test_planner_user_template_hash_is_stable_and_64_hex() -> None:
+    assert len(PLANNER_USER_TEMPLATE_HASH) == 64
+    assert all(c in "0123456789abcdef" for c in PLANNER_USER_TEMPLATE_HASH)
+    # Deterministic recompute from the static material only.
+    assert PLANNER_USER_TEMPLATE_HASH == _fingerprint_material(
+        list(_USER_SECTION_LABELS), list(MEMORY_VIEW_FIELDS)
+    )
+
+
+def test_planner_user_template_hash_changes_with_schema_or_template() -> None:
+    # A memory-view schema change flips the hash...
+    assert _fingerprint_material(
+        list(_USER_SECTION_LABELS), list(MEMORY_VIEW_FIELDS) + ["score"]
+    ) != PLANNER_USER_TEMPLATE_HASH
+    # ...and so does a section-label/template change.
+    changed_labels = list(_USER_SECTION_LABELS)
+    changed_labels[0] = "Objective"
+    assert _fingerprint_material(
+        changed_labels, list(MEMORY_VIEW_FIELDS)
+    ) != PLANNER_USER_TEMPLATE_HASH

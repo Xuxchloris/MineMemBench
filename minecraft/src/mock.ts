@@ -2,15 +2,22 @@
  * MockAdapter: deterministic in-memory simulation of the game world.
  * Enables CI and benchmark development without a Minecraft server.
  *
- * World layout (fixed):
+ * World layout (fixed, canonical fixture):
  * - bot spawns at (0, 64, 0) in minecraft:overworld at time 6000
  * - inventory: 32x stone (slot 0), 1x stone_sword (slot 1)
  * - one zombie (id 1001) at (3, 64, 4)
  * - one fake player "Steve" at (1, 64, 2)
+ *
+ * The optional "warded_hostiles_v1" fixture (constructor option, from env
+ * BOT_MOCK_FIXTURE) adds 1x gold_nugget (slot 2) and a skeleton (id 1002) at
+ * (-4, 64, 3), and wards both hostiles behind the hidden gold_nugget
+ * precondition (see WARDED_ATTACK_ERROR). The canonical fixture is the
+ * default and its behavior is unchanged byte-for-byte.
  */
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { executeAction, sleep, type ActionContext, type BotAdapter } from "./adapter";
+import type { MockFixtureName } from "./config";
 import type {
   ActionRequest,
   ActionResult,
@@ -21,6 +28,20 @@ import type {
   Vec3,
   WorldState,
 } from "./protocol";
+
+/**
+ * The item the warded_hostiles_v1 hidden environmental rule requires to be
+ * equipped before a warded hostile can be harmed (TASK-020).
+ */
+export const WARDED_REQUIRED_ITEM = "gold_nugget";
+
+/**
+ * The stable, nonempty error the warded_hostiles_v1 fixture returns when a
+ * warded hostile is attacked without gold_nugget equipped. It is the ONLY
+ * required-item information the environment reveals; the entity survives.
+ */
+export const WARDED_ATTACK_ERROR =
+  "the warded hostile resists the attack: gold_nugget must be equipped to harm it";
 
 interface MockEntity {
   id: number;
@@ -69,9 +90,21 @@ export class MockAdapter implements BotAdapter {
   ];
   private players = new Map<string, Vec3>([["Steve", { x: 1, y: 64, z: 2 }]]);
   private nextEntityId = 2000;
+  /** Warded hostiles (warded_hostiles_v1 fixture only): unharmable unless
+   *  gold_nugget is equipped. Empty in the canonical fixture. */
+  private readonly wardedEntityIds = new Set<number>();
 
-  constructor(options: { username?: string } = {}) {
+  constructor(options: { username?: string; fixture?: MockFixtureName } = {}) {
     this._username = options.username ?? "BenchBot";
+    if ((options.fixture ?? "canonical") === "warded_hostiles_v1") {
+      // Scenario-specific fixture for failure_learning/observed_precondition_v2
+      // (TASK-020): a second distinct hostile plus one non-obvious available
+      // inventory item; both hostiles are warded (see WARDED_ATTACK_ERROR).
+      // The canonical default above is untouched byte-for-byte.
+      this.inventory.push({ slot: 2, name: "gold_nugget", display_name: "Gold Nugget", count: 1 });
+      this.entities.push({ id: 1002, name: "skeleton", kind: "hostile", position: { x: -4, y: 64, z: 3 } });
+      this.wardedEntityIds.add(1001).add(1002);
+    }
   }
 
   get username(): string | null {
@@ -177,6 +210,12 @@ export class MockAdapter implements BotAdapter {
         const target = candidates[0];
         if (!target) {
           throw new Error(`no matching entity (name=${name ?? "-"}, entity_id=${entity_id ?? "-"})`);
+        }
+        // Hidden environmental rule (warded_hostiles_v1 fixture): a warded
+        // hostile cannot be harmed unless gold_nugget is equipped. The attack
+        // fails with the stable warded error and the entity remains alive.
+        if (this.wardedEntityIds.has(target.id) && this.equippedHand?.name !== WARDED_REQUIRED_ITEM) {
+          throw new Error(WARDED_ATTACK_ERROR);
         }
         const entityName = target.name;
         this.emitEvent("entity_hurt", { entity_id: target.id, name: target.name });

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from minemembench.agent.llm_provider import LLMProvider, LLMResponse
 from minemembench.core.models import ExperienceEvent
 from minemembench.core.runner import AgentRunner
@@ -22,7 +24,11 @@ from minemembench.scenarios.failure_transfer import (
     REQUIRED_TOOL,
     FailureTransferScenario,
 )
-from minemembench.scenarios.registry import available_scenarios
+from minemembench.scenarios.registry import (
+    ScenarioRegistryError,
+    available_scenarios,
+    create_scenario,
+)
 
 from .conftest import FakeBotClient, make_settings
 
@@ -221,5 +227,11 @@ async def test_deterministic_across_runs(tmp_path) -> None:
         assert first.metrics[key] == second.metrics[key]
 
 
-def test_scenario_registry_lists_failure_transfer() -> None:
-    assert "failure_transfer" in available_scenarios()
+def test_failure_transfer_not_in_public_registry() -> None:
+    """Safety gate: the scenario fabricates its causal failure, so it must
+    stay unregistered (research-invalid/N/A) until redesigned around a real
+    observed failure cause."""
+
+    assert "failure_transfer" not in available_scenarios()
+    with pytest.raises(ScenarioRegistryError):
+        create_scenario("failure_transfer")

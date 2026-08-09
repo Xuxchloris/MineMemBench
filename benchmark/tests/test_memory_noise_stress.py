@@ -57,7 +57,7 @@ async def test_vector_recalls_with_zero_noise(tmp_path) -> None:
     assert result.metrics["end_to_end_latency_s"] is not None
     assert result.metrics["retrieval_latency_ms"] is not None
 
-    assert result.params == {"noise_count": 0}
+    assert result.params == {"noise_count": 0, "noise_semantics_version": "legacy"}
     assert result.run_log is not None
     assert result.run_log.goal == GOAL
 
@@ -84,8 +84,10 @@ async def test_raw_retrieval_probe_recorded(tmp_path) -> None:
     assert probe.phase == "evaluate"
     assert probe.query_text == "target chest location"
     assert probe.items
-    assert all(item.event_type for item in probe.items)
-    assert any(item.context.get("subject") == "target_chest" for item in probe.items)
+    assert all(item.event.event_type for item in probe.items)
+    assert any(
+        item.event.context.get("subject") == "target_chest" for item in probe.items
+    )
 
 
 async def test_no_memory_retrieves_nothing() -> None:

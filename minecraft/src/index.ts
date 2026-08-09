@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
 
   const adapter: BotAdapter = config.mock
-    ? new MockAdapter({ username: config.username })
+    ? new MockAdapter({ username: config.username, fixture: config.mockFixture })
     : new MineflayerAdapter({
         host: config.host,
         port: config.mcPort,

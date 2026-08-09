@@ -124,7 +124,17 @@ def test_run_help_shows_scenario_param(capsys) -> None:
     with pytest.raises(SystemExit) as exc_info:
         main(["run", "--help"])
     assert exc_info.value.code == 0
-    assert "--scenario-param" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "--scenario-param" in output
+    for backend in ("none", "vector", "mem0", "letta", "graphiti"):
+        assert backend in output
+    for scenario in (
+        "delayed_recall",
+        "world_update",
+        "memory_noise_stress",
+        "failure_learning",
+    ):
+        assert scenario in output
 
 
 # --- apply_params defaults / validation -------------------------------------
@@ -135,11 +145,13 @@ def test_delayed_recall_default_params_preserve_old_behavior() -> None:
     assert scenario.params == {
         "interference_count": 10,
         "similar_distractor_count": 0,
+        "recall_semantics_version": "legacy",
     }
     scenario.apply_params({})
     assert scenario.params == {
         "interference_count": 10,
         "similar_distractor_count": 0,
+        "recall_semantics_version": "legacy",
     }
 
 
@@ -149,7 +161,16 @@ def test_delayed_recall_apply_params_overrides() -> None:
     assert scenario.params == {
         "interference_count": 500,
         "similar_distractor_count": 50,
+        "recall_semantics_version": "legacy",
     }
+
+
+def test_delayed_recall_rejects_unknown_semantics_version() -> None:
+    scenario = DelayedRecallScenario()
+    with pytest.raises(ScenarioParamError, match="recall_semantics_version"):
+        scenario.apply_params({"recall_semantics_version": "v3"})
+    scenario.apply_params({"recall_semantics_version": "entity_key_v2"})
+    assert scenario.params["recall_semantics_version"] == "entity_key_v2"
 
 
 def test_apply_params_rejects_unknown_key() -> None:
@@ -168,11 +189,19 @@ def test_apply_params_rejects_invalid_values() -> None:
 
 def test_world_update_default_and_validation() -> None:
     scenario = WorldUpdateScenario()
-    assert scenario.params == {"update_depth": 1}
+    assert scenario.params == {
+        "update_depth": 1,
+        "update_semantics_version": "legacy",
+    }
     scenario.apply_params({"update_depth": 3})
-    assert scenario.params == {"update_depth": 3}
+    assert scenario.params == {
+        "update_depth": 3,
+        "update_semantics_version": "legacy",
+    }
     with pytest.raises(ScenarioParamError, match="update_depth"):
         scenario.apply_params({"update_depth": 0})
+    with pytest.raises(ScenarioParamError, match="update_semantics_version"):
+        scenario.apply_params({"update_semantics_version": "v3"})
 
 
 async def test_delayed_recall_default_params_run_matches_classic(tmp_path) -> None:
@@ -203,7 +232,9 @@ async def test_delayed_recall_default_params_run_matches_classic(tmp_path) -> No
     assert result.params == {
         "interference_count": 10,
         "similar_distractor_count": 0,
+        "recall_semantics_version": "legacy",
     }
+    assert result.evaluation_ground_truth is None  # legacy has no v2 oracle
     stats = await memory.stats()
     assert stats.item_count == 11  # 1 chest fact + 10 noise facts
 

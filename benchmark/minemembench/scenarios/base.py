@@ -13,7 +13,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, ClassVar
+from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,8 +21,9 @@ from ..agent.llm_provider import LLMProvider
 from ..core.client import BotClient
 from ..core.config import Settings
 from ..core.fairness import FairnessRecord
+from ..core.models import ActionResult, ExperienceEvent
 from ..core.runner import AgentRunner, RunLog
-from ..memory.base import MemoryBackend, MemoryQuery
+from ..memory.base import MemoryBackend, MemoryItemSnapshot, MemoryQuery
 
 
 class PhaseRecord(BaseModel):
@@ -54,6 +55,9 @@ class ScenarioContext:
     settings: Settings
     seed: int
     episode_id: str
+    #: "native" (default) or "controlled"; Controlled Mode scenarios use it to
+    #: make their generated events deterministic (see delayed_recall).
+    campaign_mode: str = "native"
     records: list[PhaseRecord] = field(default_factory=list)
 
 
@@ -61,21 +65,12 @@ class ScenarioParamError(ValueError):
     """Raised when a scenario receives an unknown or invalid difficulty parameter."""
 
 
-class RetrievalProbeItem(BaseModel):
-    """One raw retrieved memory as seen by a retrieval probe.
-
-    The full `context` of the reconstructed ExperienceEvent is preserved so the
-    raw retrieval results survive in the run log (M15B requirement).
-    """
-
-    model_config = ConfigDict(validate_assignment=True)
-
-    item_id: str
-    episode_id: str
-    event_type: str
-    score: float | None
-    created_at: datetime
-    context: dict[str, Any] = Field(default_factory=dict)
+#: One raw retrieved memory as recorded by a retrieval probe: the full
+#: MemoryItem snapshot (score, created_at, metadata, complete ExperienceEvent),
+#: so every retrieval-side metric can be re-derived from the run log alone.
+#: Alias of the shared per-step evidence model (memory.base); the probe and
+#: the planner's per-step record use the identical shape.
+RetrievalProbeItem = MemoryItemSnapshot
 
 
 class RetrievalProbe(BaseModel):
@@ -94,6 +89,91 @@ class RetrievalProbe(BaseModel):
     items: list[RetrievalProbeItem] = Field(default_factory=list)
 
 
+class EntityKeyGroundTruth(BaseModel):
+    """Out-of-band ground truth for the delayed-recall `entity_key_v2`
+    treatment: the declared target event/key and the ordered distractor ids.
+
+    Evaluation evidence ONLY: it must never enter the planner prompt, a
+    memory event, a diagnostic query, the WorldState, or any action path.
+    """
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    semantics_version: Literal["entity_key_v2"]
+    target_event_id: str
+    target_entity_key: str
+    distractor_event_ids: list[str] = Field(default_factory=list)
+
+
+class TemporalChainGroundTruth(BaseModel):
+    """Out-of-band ground truth for the world-update `temporal_chain_v2`
+    treatment: the ordered stale chain event ids (A/B/C) and the current
+    event id (D). Same out-of-band rules as the entity-key member.
+    """
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    semantics_version: Literal["temporal_chain_v2"]
+    entity_key: Literal["supply_cache"] = "supply_cache"
+    stale_event_ids: list[str] = Field(default_factory=list)
+    current_event_id: str
+
+
+class KeyRetentionGroundTruth(BaseModel):
+    """Out-of-band ground truth for the memory-noise `key_retention_v2`
+    treatment: the declared target event/key and the ordered noise event ids.
+
+    Evaluation evidence ONLY: it must never enter the planner prompt, a
+    memory event, a diagnostic query, the WorldState, or any action path.
+    """
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    semantics_version: Literal["key_retention_v2"]
+    target_event_id: str
+    target_entity_key: str
+    noise_event_ids: list[str] = Field(default_factory=list)
+
+
+class ObservedPreconditionGroundTruth(BaseModel):
+    """Out-of-band ground truth for the failure-learning
+    `observed_precondition_v2` treatment (TASK-020): the observed source
+    failure event id, the source/transfer entities, the required item, the
+    expected source action/status/error, and the shared task-family
+    identifier, plus the ordered interference event ids.
+
+    Evaluation evidence ONLY: it must never enter the planner prompt, a
+    memory event, a diagnostic query, the WorldState, or any action path.
+    """
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    semantics_version: Literal["observed_precondition_v2"]
+    task_family: str
+    source_failure_event_id: str
+    source_entity: str
+    transfer_entity: str
+    required_item: str
+    expected_source_action: str
+    expected_source_status: str
+    expected_source_error: str
+    interference_event_ids: list[str] = Field(default_factory=list)
+
+
+#: Typed out-of-band evaluation ground truth for a scenario run (TASK-011 /
+#: TASK-013 / TASK-016 / TASK-020). A discriminated union on
+#: `semantics_version`; the serialized shape of the earlier members is
+#: unchanged. Optional on `ScenarioResult` (default None) so pre-v2 result
+#: files validate unchanged.
+EvaluationGroundTruth = Annotated[
+    EntityKeyGroundTruth
+    | TemporalChainGroundTruth
+    | KeyRetentionGroundTruth
+    | ObservedPreconditionGroundTruth,
+    Field(discriminator="semantics_version"),
+]
+
+
 class ScenarioResult(BaseModel):
     """The measured outcome of one scenario run.
 
@@ -110,11 +190,25 @@ class ScenarioResult(BaseModel):
     seed: int
     memory_backend: str
     success: bool
+    #: Which campaign mode produced the run ("native" or "controlled") —
+    #: native exploratory and controlled comparison outputs never mix silently.
+    campaign_mode: str = "native"
     metrics: dict[str, float | int | str | None] = Field(default_factory=dict)
     run_log: RunLog | None = None
     params: dict[str, Any] = Field(default_factory=dict)
     fairness: FairnessRecord | None = None
     retrieval_probes: list[RetrievalProbe] = Field(default_factory=list)
+    #: Every event offered to `memory.add`/`update` during the run, in offer
+    #: order (including NoMemory runs), so actual campaign inputs are auditable
+    #: from the result log itself.
+    injected_events: list[ExperienceEvent] = Field(default_factory=list)
+    #: Out-of-band evaluation ground truth (e.g. entity_key_v2 target/distractor
+    #: ids); never planner-visible. None for runs/treatments without one.
+    evaluation_ground_truth: EvaluationGroundTruth | None = None
+    #: Exact ActionResults the scenario itself observed from the environment
+    #: (TASK-020: the real failed source attack of observed_precondition_v2),
+    #: preserved verbatim as raw evidence. Empty for runs without any.
+    observed_action_results: list[ActionResult] = Field(default_factory=list)
 
     def to_json(self) -> str:
         """Serialize the scenario result for the results directory."""
@@ -267,16 +361,6 @@ async def run_retrieval_probe(
         started_at=started,
         finished_at=finished,
         latency_ms=latency_ms,
-        items=[
-            RetrievalProbeItem(
-                item_id=item.item_id,
-                episode_id=item.event.episode_id,
-                event_type=item.event.event_type.value,
-                score=item.score,
-                created_at=item.created_at,
-                context=item.event.context,
-            )
-            for item in items
-        ],
+        items=[MemoryItemSnapshot.from_item(item) for item in items],
     )
     return items, probe

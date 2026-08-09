@@ -1,6 +1,7 @@
 import { once } from "node:events";
 import { beforeEach, describe, expect, it } from "vitest";
-import { MockAdapter } from "../src/mock";
+import { loadConfig } from "../src/config";
+import { MockAdapter, WARDED_ATTACK_ERROR } from "../src/mock";
 import { ActionRequestSchema, type ActionRequest, type RawGameEvent } from "../src/protocol";
 
 function action(body: unknown): ActionRequest {
@@ -24,9 +25,64 @@ describe("MockAdapter", () => {
     expect(state.inventory).toContainEqual({ slot: 0, name: "stone", display_name: "Stone", count: 32 });
     expect(state.inventory).toContainEqual({ slot: 1, name: "stone_sword", display_name: "Stone Sword", count: 1 });
     expect(state.nearby_entities.map((e) => e.name)).toContain("zombie");
+    expect(state.inventory.map((i) => i.name)).toEqual(["stone", "stone_sword"]);
+    expect(state.nearby_entities.map((e) => e.name)).toEqual(["zombie"]);
     expect(state.nearby_players.map((p) => p.username)).toContain("Steve");
     // Protocol: nearby_entities excludes players.
     expect(state.nearby_entities.every((e) => e.kind !== "player")).toBe(true);
+  });
+
+  it.each([
+    ["zombie", 1001],
+    ["skeleton", 1002],
+  ] as const)(
+    "warded_hostiles_v1 enforces failed -> equip -> completed for %s",
+    async (entityName, entityId) => {
+      const warded = new MockAdapter({ fixture: "warded_hostiles_v1" });
+      await warded.connect();
+      const initial = await warded.getState();
+      expect(initial.equipped.hand).toBeNull();
+      expect(initial.inventory).toContainEqual({
+        slot: 2,
+        name: "gold_nugget",
+        display_name: "Gold Nugget",
+        count: 1,
+      });
+      expect(initial.nearby_entities.map((e) => [e.id, e.name])).toEqual([
+        [1001, "zombie"],
+        [1002, "skeleton"],
+      ]);
+
+      const failed = await warded.execute(
+        action({ action: "attack_entity", arguments: { entity_id: entityId } }),
+        5000,
+      );
+      expect(failed.status).toBe("failed");
+      expect(failed.result).toBeNull();
+      expect(failed.error).toBe(WARDED_ATTACK_ERROR);
+      expect(failed.state_after.nearby_entities.map((e) => e.name)).toContain(entityName);
+
+      const equipped = await warded.execute(
+        action({ action: "equip_item", arguments: { item: "gold_nugget" } }),
+        5000,
+      );
+      expect(equipped.status).toBe("completed");
+      expect(equipped.state_after.equipped.hand?.name).toBe("gold_nugget");
+
+      const completed = await warded.execute(
+        action({ action: "attack_entity", arguments: { entity_id: entityId } }),
+        5000,
+      );
+      expect(completed.status).toBe("completed");
+      expect(completed.result).toEqual({ entity_name: entityName, killed: true });
+      expect(completed.state_after.nearby_entities.map((e) => e.name)).not.toContain(entityName);
+    },
+  );
+
+  it("rejects an unknown BOT_MOCK_FIXTURE", () => {
+    expect(() => loadConfig({ BOT_MOCK: "1", BOT_MOCK_FIXTURE: "unknown-v9" })).toThrow(
+      /invalid BOT_MOCK_FIXTURE/,
+    );
   });
 
   it("isConnected reflects connect/disconnect", async () => {

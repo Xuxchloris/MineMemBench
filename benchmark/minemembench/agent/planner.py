@@ -136,6 +136,76 @@ def _extract_first_json_object(text: str) -> Any:
     return obj
 
 
+#: The semantic ExperienceEvent fields exposed to the planner, in prompt
+#: order. This schema is part of the PLANNER_USER_TEMPLATE_HASH material.
+#: `timestamp` is semantic event time (deterministic across backends in
+#: Controlled Mode) — restored per A-FINAL-008 so the planner can resolve
+#: "learned ... at the start of this episode" from equal semantic data.
+#: Backend internals (item/event ids, episode id, score, storage created_at,
+#: metadata, raw events) are never included.
+MEMORY_VIEW_FIELDS = (
+    "actor",
+    "target",
+    "event_type",
+    "location",
+    "context",
+    "outcome",
+    "timestamp",
+)
+
+#: Static user-message section labels, in prompt order. Also part of the
+#: fingerprint material.
+_USER_SECTION_LABELS = (
+    "Goal",
+    "Current world state (JSON)",
+    "Recent actions this episode (JSON, most recent last)",
+    "Retrieved long-term memories (JSON)",
+)
+
+#: SHA-256 fingerprint of the planner user-message template and the
+#: memory-view schema. Deterministic: covers only the static section
+#: labels/order and the allowed semantic memory fields — never dynamic
+#: goals, states, transcripts, memories, ids, wall time, or secrets. Any
+#: template/schema change (e.g. TASK-007's view vs. TASK-009's) changes it.
+PLANNER_USER_TEMPLATE_HASH = hashlib.sha256(
+    json.dumps(
+        {
+            "user_section_labels": list(_USER_SECTION_LABELS),
+            "memory_view_fields": list(MEMORY_VIEW_FIELDS),
+        },
+        sort_keys=True,
+    ).encode("utf-8")
+).hexdigest()
+
+
+def memory_view_for_prompt(item: MemoryItem) -> dict[str, Any]:
+    """The backend-neutral view of one retrieved memory for the LLM prompt.
+
+    Only the semantic ExperienceEvent fields the planner may act on (see
+    MEMORY_VIEW_FIELDS), in retrieved order — never backend-specific or
+    bookkeeping fields (`item_id`, `score`, `created_at`, `metadata`, event
+    `event_id`, `episode_id`, `raw_events`), so behavior is attributable to
+    retrieved content and order alone (A-FINAL-006). The event `timestamp`
+    IS semantic content (A-FINAL-008). The exact raw `MemoryItemSnapshot`
+    stays in `RunStep.retrieved_items` for audit and metric derivation; this
+    view never feeds the metrics.
+    """
+
+    event = item.event
+    values: dict[str, Any] = {
+        "actor": event.actor,
+        "target": event.target,
+        "event_type": event.event_type.value,
+        "location": (
+            event.location.model_dump(mode="json") if event.location else None
+        ),
+        "context": event.context,
+        "outcome": event.outcome,
+        "timestamp": event.timestamp.isoformat(),
+    }
+    return {"event": {field: values[field] for field in MEMORY_VIEW_FIELDS}}
+
+
 class Planner:
     """Turns (goal, world state, transcript, memories) into one action.
 
@@ -162,22 +232,33 @@ class Planner:
         memories: list[MemoryItem],
         history: list[TranscriptEntry],
     ) -> str:
-        """Labeled prompt sections: working transcript vs. long-term memories."""
+        """Labeled prompt sections: working transcript vs. long-term memories.
+
+        The world state is normalized before serialization: the volatile
+        observation `timestamp` is excluded so the prompt depends only on
+        world content, not wall time. The normalization is identical for
+        every backend and every mode; the raw state (timestamp included) is
+        preserved on the run's `RunStep.world_state`.
+
+        Retrieved memories are serialized through `memory_view_for_prompt`:
+        semantic event fields only, in retrieved order, with every
+        backend-specific or bookkeeping field stripped — identical for every
+        backend, never branching on a backend name.
+        """
 
         recent = history[-MAX_TRANSCRIPT_ENTRIES:]
-        state_json = json.dumps(state.model_dump(mode="json"))
+        state_json = json.dumps(state.model_dump(mode="json", exclude={"timestamp"}))
         transcript_json = json.dumps(
             [entry.model_dump(mode="json") for entry in recent]
         )
         memories_json = json.dumps(
-            [item.model_dump(mode="json") for item in memories]
+            [memory_view_for_prompt(item) for item in memories]
         )
         return (
-            f"Goal: {goal}\n\n"
-            f"Current world state (JSON):\n{state_json}\n\n"
-            f"Recent actions this episode (JSON, most recent last):\n"
-            f"{transcript_json}\n\n"
-            f"Retrieved long-term memories (JSON):\n{memories_json}"
+            f"{_USER_SECTION_LABELS[0]}: {goal}\n\n"
+            f"{_USER_SECTION_LABELS[1]}:\n{state_json}\n\n"
+            f"{_USER_SECTION_LABELS[2]}:\n{transcript_json}\n\n"
+            f"{_USER_SECTION_LABELS[3]}:\n{memories_json}"
         )
 
     async def decide(

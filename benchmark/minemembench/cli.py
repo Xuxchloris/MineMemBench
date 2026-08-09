@@ -12,6 +12,7 @@ import asyncio
 import json
 import sys
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,16 +22,39 @@ from .agent.llm_provider import LLMError, OpenAICompatibleProvider
 from .agent.planner import PlannerError
 from .core.client import BotBridgeError, BotClient
 from .core.config import Settings
-from .core.fairness import FairnessChecker
+from .core.fairness import (
+    CAMPAIGN_MODE_CONTROLLED,
+    CAMPAIGN_MODE_NATIVE,
+    FairnessChecker,
+)
 from .core.ids import new_run_id
-from .core.models import ActionResult, HealthResponse, Position, WorldState
+from .core.models import (
+    ActionResult,
+    BotMode,
+    EntityKind,
+    HealthResponse,
+    InventoryItem,
+    NearbyEntity,
+    NearbyPlayer,
+    Position,
+    WorldState,
+)
 from .core.runner import AgentRunner, RunLog
 from .evaluation.metrics import aggregate, load_results
 from .evaluation.reporter import write_charts, write_csv, write_markdown
 from .events.collector import EventCollector
-from .memory.registry import MemoryRegistryError, create_memory_backend
+from .memory.base import EventRecordingBackend
+from .memory.registry import (
+    MemoryRegistryError,
+    available_backends,
+    create_memory_backend,
+)
 from .scenarios.base import ScenarioContext, ScenarioResult
-from .scenarios.registry import ScenarioRegistryError, create_scenario
+from .scenarios.registry import (
+    ScenarioRegistryError,
+    available_scenarios,
+    create_scenario,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -79,7 +103,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--memory",
         default="none",
-        help="Memory backend name (none, vector, or mem0).",
+        help=f"Memory backend name ({', '.join(available_backends())}).",
     )
     run.add_argument(
         "--goal",
@@ -104,7 +128,10 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--scenario",
         default=None,
-        help="Scenario name, e.g. delayed_recall; runs the scenario harness.",
+        help=(
+            "Scenario name; runs the scenario harness. Available: "
+            f"{', '.join(available_scenarios())}."
+        ),
     )
     run.add_argument(
         "--scenario-param",
@@ -127,7 +154,23 @@ def _build_parser() -> argparse.ArgumentParser:
         "--seed",
         type=int,
         default=42,
-        help="Seeded RNG driving scenario phases (default 42).",
+        help=(
+            "Base seed for the scenario's seeded RNG (default 42). With "
+            "--runs N, run i uses seed + i (a paired schedule shared by every "
+            "backend) and the effective seed is recorded in each run log."
+        ),
+    )
+    run.add_argument(
+        "--campaign-mode",
+        choices=[CAMPAIGN_MODE_NATIVE, CAMPAIGN_MODE_CONTROLLED],
+        default=CAMPAIGN_MODE_NATIVE,
+        help=(
+            "Campaign identity recorded in the run log and fairness record. "
+            "'controlled' enforces a fresh canonical mock fixture "
+            "(fail-closed on any other health mode), deterministic scenario "
+            "events, and exactly one run per invocation; campaigns are driven "
+            "by scripts/run_controlled_campaign.py."
+        ),
     )
     run.add_argument("--model", default=None, help="LLM model override.")
     run.add_argument(
@@ -362,8 +405,58 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+#: Controlled Mode scenario/version policy (TASK-014): the ONLY approved
+#: combinations. Both the CLI gate and the campaign runner validate through
+#: this single policy — never duplicate the allowlist. The policy consumes
+#: the scenario's FULL EFFECTIVE params (post `apply_params`), not raw input;
+#: the scenario's own validation stays authoritative for names/types/ranges,
+#: and the scenario-level fail-closed gates remain defense in depth.
+CONTROLLED_VERSION_PARAM = {
+    "delayed_recall": "recall_semantics_version",
+    "world_update": "update_semantics_version",
+    "memory_noise_stress": "noise_semantics_version",
+    "failure_learning": "failure_semantics_version",
+}
+CONTROLLED_APPROVED_VERSIONS = {
+    # delayed_recall legacy stays approved for historical
+    # reproducibility/diagnostics; world_update, memory_noise_stress and
+    # failure_learning are v2-only.
+    "delayed_recall": frozenset({"legacy", "entity_key_v2"}),
+    "world_update": frozenset({"temporal_chain_v2"}),
+    "memory_noise_stress": frozenset({"key_retention_v2"}),
+    "failure_learning": frozenset({"observed_precondition_v2"}),
+}
+
+
+def validate_controlled_policy(
+    scenario_name: str, effective_params: dict[str, Any]
+) -> str | None:
+    """Validate one Controlled scenario/version combination.
+
+    Returns None when approved, else a human-readable rejection reason.
+    `effective_params` must be the scenario's full effective params (defaults
+    merged), so a missing version override fails closed via the default.
+    """
+
+    param = CONTROLLED_VERSION_PARAM.get(scenario_name)
+    if param is None:
+        return (
+            f"scenario {scenario_name!r} is not approved for Controlled Mode "
+            f"(approved: {', '.join(sorted(CONTROLLED_VERSION_PARAM))})"
+        )
+    version = effective_params.get(param)
+    allowed = CONTROLLED_APPROVED_VERSIONS[scenario_name]
+    if version not in allowed:
+        return (
+            f"Controlled {scenario_name} requires {param} in "
+            f"{sorted(allowed)}, got {version!r}"
+        )
+    return None
+
+
 def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:
     scenario_params: dict[str, Any] = {}
+    scenario = None
     if args.scenario is not None:
         try:
             scenario = create_scenario(args.scenario)
@@ -381,6 +474,27 @@ def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:
     elif args.goal is None:
         print("error: --goal is required unless --scenario is given", file=sys.stderr)
         return 2
+
+    if args.campaign_mode == CAMPAIGN_MODE_CONTROLLED:
+        if args.scenario is None:
+            print(
+                "error: --campaign-mode controlled requires --scenario",
+                file=sys.stderr,
+            )
+            return 2
+        if args.runs != 1:
+            print(
+                "error: --runs must be 1 in Controlled Mode; every run needs a "
+                "fresh canonical mock adapter, driven one run at a time by "
+                "scripts/run_controlled_campaign.py",
+                file=sys.stderr,
+            )
+            return 2
+        # The central policy gate runs BEFORE any bot/LLM/backend contact.
+        policy_error = validate_controlled_policy(args.scenario, scenario.params)
+        if policy_error is not None:
+            print(f"error: {policy_error}", file=sys.stderr)
+            return 2
 
     # CLI overrides win over env/.env for this process only.
     if args.model is not None:
@@ -420,14 +534,204 @@ def _run_plain_mode(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+#: Controlled Mode fixture selectors and versioned identities.  The canonical
+#: fixture remains the default for every pre-TASK-020 scenario; failure
+#: learning v2 selects the warded-hostiles fixture explicitly.  Selection is
+#: based only on scenario semantics, never on the memory backend.
+CONTROLLED_FIXTURE_SELECTOR = "canonical"
+CONTROLLED_FIXTURE_IDENTITY = (
+    "mock-fixture-v1: spawn=(0,64,0) minecraft:overworld time_of_day=6000 "
+    "clear inventory=[32x stone, 1x stone_sword] "
+    "entities=[zombie@(3,64,4), player Steve@(1,64,2)]"
+)
+CONTROLLED_WARDED_FIXTURE_SELECTOR = "warded_hostiles_v1"
+CONTROLLED_WARDED_FIXTURE_IDENTITY = (
+    "mock-fixture-warded-hostiles-v1: spawn=(0,64,0) "
+    "minecraft:overworld time_of_day=6000 clear "
+    "inventory=[32x stone, 1x stone_sword, 1x gold_nugget] "
+    "entities=[zombie@(3,64,4), skeleton@(-4,64,3), "
+    "player Steve@(1,64,2)] hidden_rule=warded-attack-v1"
+)
+
+
+def controlled_fixture_spec(
+    scenario_name: str, effective_params: dict[str, Any]
+) -> tuple[str, str]:
+    """Return the explicit (selector, versioned identity) for one treatment.
+
+    The central Controlled policy must already have accepted the treatment.
+    Keeping this mapping beside that policy makes the fixture a controlled
+    scenario variable and prevents any backend-dependent selection.
+    """
+
+    if (
+        scenario_name == "failure_learning"
+        and effective_params.get("failure_semantics_version")
+        == "observed_precondition_v2"
+    ):
+        return (
+            CONTROLLED_WARDED_FIXTURE_SELECTOR,
+            CONTROLLED_WARDED_FIXTURE_IDENTITY,
+        )
+    return CONTROLLED_FIXTURE_SELECTOR, CONTROLLED_FIXTURE_IDENTITY
+
+
+def canonical_fixture_state() -> WorldState:
+    """The complete initial WorldState of a fresh mock adapter process.
+
+    Mirrors `minecraft/src/mock.ts` field-for-field (verified against a live
+    `BOT_MOCK=1` adapter, 2026-08). The observation `timestamp` is the only
+    volatile field and is excluded from the fixture comparison.
+    """
+
+    return WorldState(
+        timestamp=datetime(2026, 1, 1, tzinfo=UTC),  # placeholder, excluded
+        mode=BotMode.MOCK,
+        username="BenchBot",
+        health=20.0,
+        food=20,
+        saturation=5.0,
+        oxygen=20,
+        position=Position(x=0.0, y=64.0, z=0.0),
+        yaw=0.0,
+        pitch=0.0,
+        dimension="minecraft:overworld",
+        time_of_day=6000,
+        is_raining=False,
+        experience_level=0,
+        inventory=[
+            InventoryItem(slot=0, name="stone", display_name="Stone", count=32),
+            InventoryItem(
+                slot=1, name="stone_sword", display_name="Stone Sword", count=1
+            ),
+        ],
+        nearby_entities=[
+            NearbyEntity(
+                id=1001,
+                name="zombie",
+                display_name="Zombie",
+                kind=EntityKind.HOSTILE,
+                position=Position(x=3.0, y=64.0, z=4.0),
+                distance=5.0,
+            )
+        ],
+        nearby_players=[
+            NearbyPlayer(
+                username="Steve",
+                position=Position(x=1.0, y=64.0, z=2.0),
+                distance=2.2,
+            )
+        ],
+    )
+
+
+def warded_hostiles_fixture_state() -> WorldState:
+    """Complete visible state of `BOT_MOCK_FIXTURE=warded_hostiles_v1`.
+
+    The hidden attack rule is covered by adapter action tests; this state
+    fingerprint audits every planner-visible field before a Controlled run.
+    """
+
+    state = canonical_fixture_state()
+    state.inventory.append(
+        InventoryItem(
+            slot=2,
+            name="gold_nugget",
+            display_name="Gold Nugget",
+            count=1,
+        )
+    )
+    state.nearby_entities.append(
+        NearbyEntity(
+            id=1002,
+            name="skeleton",
+            display_name="Skeleton",
+            kind=EntityKind.HOSTILE,
+            position=Position(x=-4.0, y=64.0, z=3.0),
+            distance=5.0,
+        )
+    )
+    return state
+
+
+def controlled_fixture_state(selector: str) -> WorldState:
+    """Return the complete expected visible state for a fixture selector."""
+
+    if selector == CONTROLLED_FIXTURE_SELECTOR:
+        return canonical_fixture_state()
+    if selector == CONTROLLED_WARDED_FIXTURE_SELECTOR:
+        return warded_hostiles_fixture_state()
+    raise ValueError(f"unknown Controlled fixture selector: {selector!r}")
+
+
+def _normalized_state(state: WorldState) -> dict[str, Any]:
+    """The state without its volatile observation timestamp."""
+
+    return state.model_dump(mode="json", exclude={"timestamp"})
+
+
+async def _assert_controlled_fixture(
+    bot: BotClient,
+    health: HealthResponse,
+    fixture_selector: str = CONTROLLED_FIXTURE_SELECTOR,
+) -> str:
+    """Fail closed unless the adapter exposes the selected fresh mock fixture.
+
+    Controlled Mode exists to hold the planner's world constant across
+    backends. The gate compares the COMPLETE normalized initial WorldState
+    (everything except the volatile observation timestamp — mode, username,
+    vitals, orientation, inventory, equipment, entities, players) against the
+    selected fixture, so any fixture drift that could change the planner
+    prompt fails the run instead of producing non-comparable evidence.
+    Returns the fixture identity string for the fairness record.
+    """
+
+    if health.mode is not BotMode.MOCK:
+        raise BotBridgeError(
+            "Controlled Mode requires a fresh mock bot adapter, but health "
+            f"reports mode={health.mode.value!r}; start one with BOT_MOCK=1 "
+            "(scripts/run_controlled_campaign.py owns the per-run process)"
+        )
+    observed = _normalized_state(await bot.get_state())
+    expected_state = controlled_fixture_state(fixture_selector)
+    expected = _normalized_state(expected_state)
+    if observed != expected:
+        differing = [
+            key
+            for key in expected
+            if observed.get(key) != expected[key]
+        ] + [key for key in observed if key not in expected]
+        fixture_label = (
+            "is not canonical"
+            if fixture_selector == CONTROLLED_FIXTURE_SELECTOR
+            else f"does not match {fixture_selector!r}"
+        )
+        raise BotBridgeError(
+            f"Controlled Mode fixture {fixture_label} "
+            "(the mock adapter must be a FRESH process); differing fields: "
+            + ", ".join(differing)
+        )
+    if fixture_selector == CONTROLLED_FIXTURE_SELECTOR:
+        return CONTROLLED_FIXTURE_IDENTITY
+    return CONTROLLED_WARDED_FIXTURE_IDENTITY
+
+
 async def _run_scenario_async(
     args: argparse.Namespace,
     settings: Settings,
     scenario_params: dict[str, Any],
 ) -> list[ScenarioResult]:
-    memory = create_memory_backend(args.memory, settings)
     llm = OpenAICompatibleProvider(settings)
     fairness_checker = FairnessChecker(settings, llm)
+    campaign_mode: str = args.campaign_mode
+
+    fixture_selector: str | None = None
+    if campaign_mode == CAMPAIGN_MODE_CONTROLLED:
+        fixture_scenario = create_scenario(args.scenario)
+        fixture_scenario.apply_params(scenario_params)
+        fixture_selector, _fixture_identity = controlled_fixture_spec(
+            fixture_scenario.name, fixture_scenario.params
+        )
 
     async with BotClient(args.bot_url or settings.bot_url) as bot:
         health = await bot.health()
@@ -435,15 +739,32 @@ async def _run_scenario_async(
             raise BotBridgeError(
                 "bot adapter is reachable but not connected to a Minecraft server"
             )
+        fixture_identity = None
+        if campaign_mode == CAMPAIGN_MODE_CONTROLLED:
+            assert fixture_selector is not None
+            fixture_identity = await _assert_controlled_fixture(
+                bot, health, fixture_selector
+            )
         print(f"bot: {health.username} ({health.mode.value} mode)")
 
         results: list[ScenarioResult] = []
-        previous_result: ScenarioResult | None = None
-        previous_episode: str | None = None
         for run_index in range(args.runs):
             episode_id = new_run_id()
-            await memory.reset(episode_id)
-            collector = EventCollector(bot, memory)
+            # Paired seed schedule: run i uses base_seed + i, identical for
+            # every backend given the same base seed and run count.
+            run_seed = args.seed + run_index
+            # A fresh backend instance per run: latency counters and any
+            # process-local scope never accumulate across runs. The recording
+            # proxy captures the complete offered event sequence for the log.
+            memory = EventRecordingBackend(create_memory_backend(args.memory, settings))
+            # Controlled Mode skips the raw-stream collector: its mapped
+            # events carry wall-clock timestamps/uuids, which would break the
+            # identical-inputs invariant. Native mode is unchanged.
+            collector = (
+                None
+                if campaign_mode == CAMPAIGN_MODE_CONTROLLED
+                else EventCollector(bot, memory)
+            )
             runner = AgentRunner(bot, memory, llm, event_collector=collector)
             ctx = ScenarioContext(
                 bot=bot,
@@ -451,25 +772,31 @@ async def _run_scenario_async(
                 runner=runner,
                 llm=llm,
                 settings=settings,
-                seed=args.seed,
+                seed=run_seed,
                 episode_id=episode_id,
+                campaign_mode=campaign_mode,
             )
             scenario = create_scenario(args.scenario)
             scenario.apply_params(scenario_params)
             result = await scenario.run(ctx)
+            result.campaign_mode = campaign_mode
+            result.injected_events = list(memory.offered_events)
 
-            leak_probe_query = None
-            if previous_result is not None and previous_result.run_log is not None:
-                leak_probe_query = (
-                    f"{previous_result.scenario} {previous_result.run_log.goal}"
-                )
+            # Metrics are captured; now reset the episode that ACTUALLY ran
+            # and verify the cleanup (reset episode + fresh scope probes).
+            probe_query = None
+            if result.run_log is not None:
+                probe_query = f"{result.scenario} {result.run_log.goal}"
             result.fairness = await fairness_checker.check(
                 memory=memory,
                 scenario=scenario.name,
                 scenario_params=scenario.params,
-                previous_episode=previous_episode,
-                next_episode=episode_id,
-                leak_probe_query=leak_probe_query,
+                episode_id=episode_id,
+                run_seed=run_seed,
+                campaign_mode=campaign_mode,
+                fixture_selector=fixture_selector,
+                fixture_identity=fixture_identity,
+                probe_query=probe_query,
             )
             results.append(result)
 
@@ -493,8 +820,6 @@ async def _run_scenario_async(
                 f"fairness_valid={fairness_valid}"
             )
             print(f"  scenario result written to {out_path}")
-            previous_result = result
-            previous_episode = episode_id
         return results
 
 

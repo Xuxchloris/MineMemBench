@@ -1,5 +1,17 @@
 """Scenario E — Failure Transfer (M15B, upgrade of failure_learning).
 
+**STATUS: SUSPENDED — research-invalid, removed from the public scenario
+registry (TASK-002 safety gate, A-AUDIT-002 critical finding).** The scenario
+writes `TASK_FAILED(reason=missing_tool)` and an exact
+`requires_tool=iron_pickaxe` fact after a run that cannot actually observe
+either: the current protocol/world fixture (virtual tool gates, mock/real bot
+actions without equipment preconditions) produces no failed `ActionResult`
+carrying a missing-tool cause. The causal failure and its solution are
+authored, not observed, so no adaptation measured here can support a
+failure-learning conclusion. All endpoints are N/A. Do not redesign it inside
+the measurement-validity task; the module remains only as a development
+artifact for a future redesign around real observed failure causes.
+
 The first task fails because a specific tool is missing (the container is
 reinforced and cannot be opened without an iron pickaxe). A second task
 differs in map area, goal object and location, but shares the underlying
