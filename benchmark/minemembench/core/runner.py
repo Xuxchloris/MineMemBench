@@ -9,6 +9,7 @@ backend-independent short-term context (see agent.planner).
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -108,16 +109,23 @@ class AgentRunner:
         *,
         max_steps: int = 10,
         success_at: Position | None = None,
+        success_when: Callable[[RunStep], bool] | None = None,
         episode_id: str | None = None,
     ) -> RunLog:
-        """Loop until `success_at` is reached or `max_steps` is exhausted.
+        """Loop until an objective success condition or the budget is reached.
 
         Each executed action appends one TranscriptEntry, so the planner sees
-        a growing working transcript on every step. Without `success_at` the
-        loop always runs to `max_steps` and `success` stays False — there is
-        no positional finish line to check. Token totals cover the final call
-        of each decision; retried calls are counted in `llm_calls` but their
-        usage is not available.
+        a growing working transcript on every step. Without ``success_at`` or
+        ``success_when`` the loop always runs to ``max_steps`` and ``success``
+        stays false. Token totals cover the final call of each decision;
+        retried calls are counted in ``llm_calls`` but their usage is not
+        available.
+
+        ``success_when`` is an optional backend-neutral evaluator over the
+        just-recorded step. It lets a scenario stop on an objective terminal
+        environment action (for example, completed delivery) instead of
+        spending the remaining budget on post-completion actions. The
+        predicate is never exposed to the planner or memory backend.
 
         `episode_id`, when given, is the run's episode id: the event
         collector tags collected events with it and the planner scopes memory
@@ -192,10 +200,14 @@ class AgentRunner:
                     )
                 )
 
-                if (
+                step_succeeded = (
+                    success_when(steps[-1]) if success_when is not None else False
+                )
+                position_succeeded = (
                     success_at is not None
                     and _distance(position, success_at) <= SUCCESS_RADIUS_BLOCKS
-                ):
+                )
+                if step_succeeded or position_succeeded:
                     success = True
                     break
         finally:

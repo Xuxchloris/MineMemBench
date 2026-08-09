@@ -8,11 +8,8 @@
  * - one zombie (id 1001) at (3, 64, 4)
  * - one fake player "Steve" at (1, 64, 2)
  *
- * The optional "warded_hostiles_v1" fixture (constructor option, from env
- * BOT_MOCK_FIXTURE) adds 1x gold_nugget (slot 2) and a skeleton (id 1002) at
- * (-4, 64, 3), and wards both hostiles behind the hidden gold_nugget
- * precondition (see WARDED_ATTACK_ERROR). The canonical fixture is the
- * default and its behavior is unchanged byte-for-byte.
+ * Versioned scenario fixtures may add warded hostiles or an out-of-range
+ * dropped lifetime token. The canonical fixture remains the default.
  */
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
@@ -42,6 +39,25 @@ export const WARDED_REQUIRED_ITEM = "gold_nugget";
  */
 export const WARDED_ATTACK_ERROR =
   "the warded hostile resists the attack: gold_nugget must be equipped to harm it";
+
+/**
+ * Environment-owned prerequisite families for the M15.1 applicability
+ * treatment.  Each source/transfer pair shares one real hidden rule while
+ * the other families are deliberately similar but inapplicable.
+ */
+export const HETEROGENEOUS_FAILURE_REQUIREMENTS = {
+  alpha_zombie: "iron_ingot",
+  alpha_creeper: "iron_ingot",
+  beta_skeleton: "string",
+  beta_stray: "string",
+  gamma_spider: "gold_nugget",
+  gamma_cave_spider: "gold_nugget",
+} as const;
+
+export function heterogeneousFailureError(entityName: string, requiredItem: string): string {
+  const family = entityName.split("_", 1)[0];
+  return `${family} ward rejects the attack: ${requiredItem} must be equipped to harm it`;
+}
 
 interface MockEntity {
   id: number;
@@ -90,20 +106,61 @@ export class MockAdapter implements BotAdapter {
   ];
   private players = new Map<string, Vec3>([["Steve", { x: 1, y: 64, z: 2 }]]);
   private nextEntityId = 2000;
-  /** Warded hostiles (warded_hostiles_v1 fixture only): unharmable unless
-   *  gold_nugget is equipped. Empty in the canonical fixture. */
-  private readonly wardedEntityIds = new Set<number>();
+  /** Hidden, environment-owned equip prerequisite keyed by entity id. */
+  private readonly attackRequirements = new Map<number, string>();
 
   constructor(options: { username?: string; fixture?: MockFixtureName } = {}) {
     this._username = options.username ?? "BenchBot";
-    if ((options.fixture ?? "canonical") === "warded_hostiles_v1") {
+    const fixture = options.fixture ?? "canonical";
+    if (fixture === "warded_hostiles_v1" || fixture === "warded_hostiles_multi_v1") {
       // Scenario-specific fixture for failure_learning/observed_precondition_v2
       // (TASK-020): a second distinct hostile plus one non-obvious available
       // inventory item; both hostiles are warded (see WARDED_ATTACK_ERROR).
       // The canonical default above is untouched byte-for-byte.
       this.inventory.push({ slot: 2, name: "gold_nugget", display_name: "Gold Nugget", count: 1 });
       this.entities.push({ id: 1002, name: "skeleton", kind: "hostile", position: { x: -4, y: 64, z: 3 } });
-      this.wardedEntityIds.add(1001).add(1002);
+      this.attackRequirements.set(1001, WARDED_REQUIRED_ITEM).set(1002, WARDED_REQUIRED_ITEM);
+      if (fixture === "warded_hostiles_multi_v1") {
+        this.entities.push(
+          { id: 1003, name: "spider", kind: "hostile", position: { x: 6, y: 64, z: -4 } },
+          { id: 1004, name: "creeper", kind: "hostile", position: { x: -7, y: 64, z: -5 } },
+        );
+        this.attackRequirements.set(1003, WARDED_REQUIRED_ITEM).set(1004, WARDED_REQUIRED_ITEM);
+      }
+    }
+    if (fixture === "heterogeneous_failures_v1") {
+      this.inventory.push(
+        { slot: 2, name: "gold_nugget", display_name: "Gold Nugget", count: 1 },
+        { slot: 3, name: "iron_ingot", display_name: "Iron Ingot", count: 1 },
+        { slot: 4, name: "string", display_name: "String", count: 1 },
+      );
+      const heterogeneousEntities: MockEntity[] = [
+        { id: 1011, name: "alpha_zombie", kind: "hostile", position: { x: 3, y: 64, z: 4 } },
+        { id: 1012, name: "alpha_creeper", kind: "hostile", position: { x: -4, y: 64, z: 3 } },
+        { id: 1021, name: "beta_skeleton", kind: "hostile", position: { x: 6, y: 64, z: -4 } },
+        { id: 1022, name: "beta_stray", kind: "hostile", position: { x: -7, y: 64, z: -5 } },
+        { id: 1031, name: "gamma_spider", kind: "hostile", position: { x: 9, y: 64, z: 2 } },
+        { id: 1032, name: "gamma_cave_spider", kind: "hostile", position: { x: -10, y: 64, z: 1 } },
+      ];
+      this.entities.push(...heterogeneousEntities);
+      for (const entity of heterogeneousEntities) {
+        const requiredItem = HETEROGENEOUS_FAILURE_REQUIREMENTS[
+          entity.name as keyof typeof HETEROGENEOUS_FAILURE_REQUIREMENTS
+        ];
+        this.attackRequirements.set(entity.id, requiredItem);
+      }
+    }
+    if (fixture === "lifetime_route_v1") {
+      // Initially outside the 32-block observation radius. The scenario must
+      // make a real observation at the cache before deriving its key event.
+      this.entities.push({
+        id: 1005,
+        name: "lifetime_token",
+        kind: "item",
+        position: { x: 40, y: 64, z: 0 },
+        itemName: "lifetime_token",
+        itemCount: 1,
+      });
     }
   }
 
@@ -194,7 +251,9 @@ export class MockAdapter implements BotAdapter {
       case "follow_player": {
         const { username } = action.arguments;
         const target = this.players.get(username);
-        if (!target) throw new Error(`player not visible: ${username}`);
+        if (!target || distance(this.position, target) > NEARBY_RADIUS) {
+          throw new Error(`player not visible: ${username}`);
+        }
         // Single approach: step onto the player's position (distance 0 <= requested).
         this.position = { ...target };
         return {};
@@ -211,11 +270,16 @@ export class MockAdapter implements BotAdapter {
         if (!target) {
           throw new Error(`no matching entity (name=${name ?? "-"}, entity_id=${entity_id ?? "-"})`);
         }
-        // Hidden environmental rule (warded_hostiles_v1 fixture): a warded
-        // hostile cannot be harmed unless gold_nugget is equipped. The attack
-        // fails with the stable warded error and the entity remains alive.
-        if (this.wardedEntityIds.has(target.id) && this.equippedHand?.name !== WARDED_REQUIRED_ITEM) {
-          throw new Error(WARDED_ATTACK_ERROR);
+        // Hidden environmental rule: fixture-specific entities cannot be
+        // harmed until their actual prerequisite item is equipped.  The raw
+        // ActionResult error is the sole answer-bearing observation.
+        const requiredItem = this.attackRequirements.get(target.id);
+        if (requiredItem !== undefined && this.equippedHand?.name !== requiredItem) {
+          throw new Error(
+            requiredItem === WARDED_REQUIRED_ITEM && target.id < 1010
+              ? WARDED_ATTACK_ERROR
+              : heterogeneousFailureError(target.name, requiredItem),
+          );
         }
         const entityName = target.name;
         this.emitEvent("entity_hurt", { entity_id: target.id, name: target.name });
@@ -246,7 +310,9 @@ export class MockAdapter implements BotAdapter {
           throw new Error(`item not in inventory: ${item} (need ${count})`);
         }
         const target = this.players.get(username);
-        if (!target) throw new Error(`player not visible: ${username}`);
+        if (!target || distance(this.position, target) > NEARBY_RADIUS) {
+          throw new Error(`player not visible: ${username}`);
+        }
         held.count -= count;
         if (held.count === 0) this.rebuildSlots();
         // The toss lands at the target player's feet as a dropped-item entity.

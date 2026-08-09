@@ -416,6 +416,8 @@ CONTROLLED_VERSION_PARAM = {
     "world_update": "update_semantics_version",
     "memory_noise_stress": "noise_semantics_version",
     "failure_learning": "failure_semantics_version",
+    "failure_learning_multi": "failure_semantics_version",
+    "long_lived_memory": "lifetime_semantics_version",
 }
 CONTROLLED_APPROVED_VERSIONS = {
     # delayed_recall legacy stays approved for historical
@@ -425,6 +427,10 @@ CONTROLLED_APPROVED_VERSIONS = {
     "world_update": frozenset({"temporal_chain_v2"}),
     "memory_noise_stress": frozenset({"key_retention_v2"}),
     "failure_learning": frozenset({"observed_precondition_v2"}),
+    "failure_learning_multi": frozenset(
+        {"observed_precondition_applicability_v4"}
+    ),
+    "long_lived_memory": frozenset({"lifetime_v1"}),
 }
 
 
@@ -552,6 +558,35 @@ CONTROLLED_WARDED_FIXTURE_IDENTITY = (
     "entities=[zombie@(3,64,4), skeleton@(-4,64,3), "
     "player Steve@(1,64,2)] hidden_rule=warded-attack-v1"
 )
+CONTROLLED_WARDED_MULTI_FIXTURE_SELECTOR = "warded_hostiles_multi_v1"
+CONTROLLED_WARDED_MULTI_FIXTURE_IDENTITY = (
+    "mock-fixture-warded-hostiles-multi-v1: spawn=(0,64,0) "
+    "minecraft:overworld time_of_day=6000 clear "
+    "inventory=[32x stone, 1x stone_sword, 1x gold_nugget] "
+    "entities=[zombie@(3,64,4), skeleton@(-4,64,3), "
+    "spider@(6,64,-4), creeper@(-7,64,-5), player Steve@(1,64,2)] "
+    "hidden_rule=warded-attack-v1"
+)
+CONTROLLED_HETEROGENEOUS_FAILURE_FIXTURE_SELECTOR = (
+    "heterogeneous_failures_v1"
+)
+CONTROLLED_HETEROGENEOUS_FAILURE_FIXTURE_IDENTITY = (
+    "mock-fixture-heterogeneous-failures-v1: spawn=(0,64,0) "
+    "minecraft:overworld time_of_day=6000 clear "
+    "inventory=[32x stone, 1x stone_sword, 1x gold_nugget, "
+    "1x iron_ingot, 1x string] entities=[zombie@(3,64,4), "
+    "alpha_zombie@(3,64,4), alpha_creeper@(-4,64,3), "
+    "beta_skeleton@(6,64,-4), beta_stray@(-7,64,-5), "
+    "gamma_spider@(9,64,2), gamma_cave_spider@(-10,64,1), "
+    "player Steve@(1,64,2)] hidden_rules=heterogeneous-attack-v1"
+)
+CONTROLLED_LIFETIME_FIXTURE_SELECTOR = "lifetime_route_v1"
+CONTROLLED_LIFETIME_FIXTURE_IDENTITY = (
+    "mock-fixture-lifetime-route-v1: spawn=(0,64,0) minecraft:overworld "
+    "time_of_day=6000 clear inventory=[32x stone, 1x stone_sword] "
+    "visible_entities=[zombie@(3,64,4), player Steve@(1,64,2)] "
+    "hidden_drop=[lifetime_token@(40,64,0)]"
+)
 
 
 def controlled_fixture_spec(
@@ -572,6 +607,23 @@ def controlled_fixture_spec(
         return (
             CONTROLLED_WARDED_FIXTURE_SELECTOR,
             CONTROLLED_WARDED_FIXTURE_IDENTITY,
+        )
+    if (
+        scenario_name == "failure_learning_multi"
+        and effective_params.get("failure_semantics_version")
+        == "observed_precondition_applicability_v4"
+    ):
+        return (
+            CONTROLLED_HETEROGENEOUS_FAILURE_FIXTURE_SELECTOR,
+            CONTROLLED_HETEROGENEOUS_FAILURE_FIXTURE_IDENTITY,
+        )
+    if (
+        scenario_name == "long_lived_memory"
+        and effective_params.get("lifetime_semantics_version") == "lifetime_v1"
+    ):
+        return (
+            CONTROLLED_LIFETIME_FIXTURE_SELECTOR,
+            CONTROLLED_LIFETIME_FIXTURE_IDENTITY,
         )
     return CONTROLLED_FIXTURE_SELECTOR, CONTROLLED_FIXTURE_IDENTITY
 
@@ -654,6 +706,81 @@ def warded_hostiles_fixture_state() -> WorldState:
     return state
 
 
+def warded_hostiles_multi_fixture_state() -> WorldState:
+    """Visible state of ``warded_hostiles_multi_v1``."""
+
+    state = warded_hostiles_fixture_state()
+    state.nearby_entities.extend(
+        [
+            NearbyEntity(
+                id=1003,
+                name="spider",
+                display_name="Spider",
+                kind=EntityKind.HOSTILE,
+                position=Position(x=6.0, y=64.0, z=-4.0),
+                distance=7.2,
+            ),
+            NearbyEntity(
+                id=1004,
+                name="creeper",
+                display_name="Creeper",
+                kind=EntityKind.HOSTILE,
+                position=Position(x=-7.0, y=64.0, z=-5.0),
+                distance=8.6,
+            ),
+        ]
+    )
+    return state
+
+
+def heterogeneous_failures_fixture_state() -> WorldState:
+    """Visible state of ``heterogeneous_failures_v1``."""
+
+    state = canonical_fixture_state()
+    state.inventory.extend(
+        [
+            InventoryItem(
+                slot=2,
+                name="gold_nugget",
+                display_name="Gold Nugget",
+                count=1,
+            ),
+            InventoryItem(
+                slot=3,
+                name="iron_ingot",
+                display_name="Iron Ingot",
+                count=1,
+            ),
+            InventoryItem(
+                slot=4,
+                name="string",
+                display_name="String",
+                count=1,
+            ),
+        ]
+    )
+    specifications = [
+        (1011, "alpha_zombie", 3.0, 64.0, 4.0, 5.0),
+        (1012, "alpha_creeper", -4.0, 64.0, 3.0, 5.0),
+        (1021, "beta_skeleton", 6.0, 64.0, -4.0, 7.2),
+        (1022, "beta_stray", -7.0, 64.0, -5.0, 8.6),
+        (1031, "gamma_spider", 9.0, 64.0, 2.0, 9.2),
+        (1032, "gamma_cave_spider", -10.0, 64.0, 1.0, 10.0),
+    ]
+    state.nearby_entities.extend(
+        NearbyEntity(
+            id=entity_id,
+            name=name,
+            display_name=" ".join(part.title() for part in name.split("_")),
+            kind=EntityKind.HOSTILE,
+            position=Position(x=x, y=y, z=z),
+            distance=distance,
+        )
+        for entity_id, name, x, y, z, distance in specifications
+    )
+    return state
+
+
 def controlled_fixture_state(selector: str) -> WorldState:
     """Return the complete expected visible state for a fixture selector."""
 
@@ -661,6 +788,14 @@ def controlled_fixture_state(selector: str) -> WorldState:
         return canonical_fixture_state()
     if selector == CONTROLLED_WARDED_FIXTURE_SELECTOR:
         return warded_hostiles_fixture_state()
+    if selector == CONTROLLED_WARDED_MULTI_FIXTURE_SELECTOR:
+        return warded_hostiles_multi_fixture_state()
+    if selector == CONTROLLED_HETEROGENEOUS_FAILURE_FIXTURE_SELECTOR:
+        return heterogeneous_failures_fixture_state()
+    if selector == CONTROLLED_LIFETIME_FIXTURE_SELECTOR:
+        # The lifetime token is intentionally outside the 32-block observation
+        # radius, so the complete initial visible state equals canonical.
+        return canonical_fixture_state()
     raise ValueError(f"unknown Controlled fixture selector: {selector!r}")
 
 
@@ -711,9 +846,18 @@ async def _assert_controlled_fixture(
             "(the mock adapter must be a FRESH process); differing fields: "
             + ", ".join(differing)
         )
-    if fixture_selector == CONTROLLED_FIXTURE_SELECTOR:
-        return CONTROLLED_FIXTURE_IDENTITY
-    return CONTROLLED_WARDED_FIXTURE_IDENTITY
+    identities = {
+        CONTROLLED_FIXTURE_SELECTOR: CONTROLLED_FIXTURE_IDENTITY,
+        CONTROLLED_WARDED_FIXTURE_SELECTOR: CONTROLLED_WARDED_FIXTURE_IDENTITY,
+        CONTROLLED_WARDED_MULTI_FIXTURE_SELECTOR: (
+            CONTROLLED_WARDED_MULTI_FIXTURE_IDENTITY
+        ),
+        CONTROLLED_HETEROGENEOUS_FAILURE_FIXTURE_SELECTOR: (
+            CONTROLLED_HETEROGENEOUS_FAILURE_FIXTURE_IDENTITY
+        ),
+        CONTROLLED_LIFETIME_FIXTURE_SELECTOR: CONTROLLED_LIFETIME_FIXTURE_IDENTITY,
+    }
+    return identities[fixture_selector]
 
 
 async def _run_scenario_async(
@@ -781,6 +925,7 @@ async def _run_scenario_async(
             result = await scenario.run(ctx)
             result.campaign_mode = campaign_mode
             result.injected_events = list(memory.offered_events)
+            result.phase_records = list(ctx.records)
 
             # Metrics are captured; now reset the episode that ACTUALLY ran
             # and verify the cleanup (reset episode + fresh scope probes).

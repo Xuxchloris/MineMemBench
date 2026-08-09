@@ -108,6 +108,8 @@ explicit v2 semantics below.
 | `world_update / temporal_chain_v2` | `update_depth` 1–4; depth 3 is A→B→C→D | depth-3 diagnostic accepted; remaining curve gated |
 | `memory_noise_stress / key_retention_v2` | `noise_count` 0/10/50/100/200/500/1000 | 0/10/50 diagnostics accepted, then stopped; no formal Failure Point |
 | `failure_learning / observed_precondition_v2` | `interference_count` | real failed ActionResult → different-entity transfer; 0/10/50 diagnostics accepted, then stopped |
+| `long_lived_memory / lifetime_v1` | `lifetime_event_count`, `session_count`, `relevant_update_count`, `similar_event_count` | TASK-026 bounded 8/20/50-event diagnostics; shared episode with transcript reset and objective locate/collect/return/deliver termination |
+| `failure_learning_multi / observed_precondition_applicability_v4` | `observed_failure_count` 2–3, `interference_count` | one applicable plus 1–2 heterogeneous inapplicable real ActionResult failures; opaque non-ordinal alpha→iron, beta→string, gamma→gold mapping; completed target attack terminates the run; historical homogeneous v3 diagnostics are superseded |
 | `failure_transfer` | — | **SUSPENDED / unregistered**: fabricated causal failure, invalid for claims |
 
 Configuration example only (not an experiment authorization):
@@ -186,6 +188,20 @@ Docker Compose (`docker-compose.yml`) wires mc-server + bot + benchmark together
 `docker-compose.letta.yml` starts the optional Letta memory server and its
 ollama embedding service (see docs/letta_live.md).
 
+The local observability dashboard is a read-only consumer of existing raw
+results. It never imports into the producer path and never starts a benchmark:
+
+```powershell
+.venv\Scripts\python -m minemembench.dashboard --results-dir results
+```
+
+It binds to loopback, recursively indexes historical/current manifests and
+results, shows live campaign/backend/cell progress and costs, replays stored
+RunSteps through a seekable semantic timeline without an LLM/bot/backend, and
+compares None/Vector/Mem0/Letta for one exact same-seed treatment while failing
+closed on incomplete fairness. See `docs/dashboard_replay_design.md` and
+`docs/difficulty-calibration.md`.
+
 ## 7. How to Add a New Memory Backend
 
 1. Subclass `MemoryBackend` in `benchmark/minemembench/memory/`.
@@ -208,10 +224,16 @@ the benchmark.
 - Current M15 Controlled evidence uses three paired seeds per cell on versioned
   mock fixtures. It is diagnostic, not a formal ranking, effect size, Failure
   Point, Native-Minecraft result, or cost-efficiency comparison.
-- The working evidence revision is currently dirty. Formal campaigns require a
-  clean externally reviewed commit, frozen preregistration and
-  `--require-clean-source`; source fingerprints alone do not make old evidence
-  formal.
+- The M15 stable baseline is frozen at commit
+  `9fdced8fa9967a6df7b856b035485b41e84c06dc` (source fingerprint
+  `8606370026c2bde49737ccb945c9b69ed4aa9cb64090aa06df6cb7c23e24e55f`).
+  TASK-026 M15.1 implementation, C QA, terminal-corrected bounded calibration
+  and A review are complete on source fingerprint
+  `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`
+  on a dirty development tree. The revision still requires its own clean
+  reviewed freeze, frozen preregistration and `--require-clean-source` before
+  any formal campaign; neither stable-baseline freeze nor diagnostic evidence
+  is formal.
 - High-level actions only — this benchmarks memory, not motor control.
 - Mem0/Letta adapters depend on those projects' evolving APIs; adapters pin and
   document the versions they were verified against.
@@ -252,5 +274,6 @@ the benchmark.
 - [x] M11 Reports: CSV / Markdown / charts
 - [x] M15A Letta Docker live memory-only integration
 - [x] M15B versioned stress scenarios + Controlled diagnostic infrastructure
+- [x] M15.1 lifetime/multi-failure difficulty plus read-only replay/dashboard
 - [ ] Formal preregistered M15 study on a clean reviewed revision
 - [ ] Later: Graphiti, ReMe, Text2Mem, A-Mem, Generative Agents memory

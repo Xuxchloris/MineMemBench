@@ -2,8 +2,9 @@
 
 Updated: 2026-08-09
 Owner: Agent A
-Status: **Letta Live and M15 diagnostic implementation are complete; formal
-experiments are gated**
+Status: **TASK-026 implementation, independent QA, terminal-corrected bounded
+calibration and A final review are complete; only a separately authorized
+clean freeze remains gated**
 
 This is the current development plan. The root-level
 `docsdevelopment_plan.md` is the historical M4-era user prompt and is retained
@@ -30,6 +31,8 @@ Controlled results are separate treatments and must never be pooled.
 | M9 / M15A Letta | complete | Docker `letta/letta:0.16.8`; strict live add/retrieve/update/reset isolation PASS |
 | M10–M11 scenarios and reporting | complete | unit/integration tests and real result/log artifacts |
 | M15B Controlled stress infrastructure | complete | deterministic streams, fixtures, campaign-local stores, causal snapshots, fairness/reset audit |
+| M15 stable baseline | frozen | commit `9fdced8fa9967a6df7b856b035485b41e84c06dc`; source fingerprint `8606370026c2bde49737ccb945c9b69ed4aa9cb64090aa06df6cb7c23e24e55f`; freeze verification PASS |
+| M15.1 difficulty + dashboard/replay | reviewed freeze candidate | lifetime treatment, heterogeneous applicability v4, objective terminal actions, read-only live campaign matrix, deterministic semantic replay and four-way compare; A/C PASS on dirty tree |
 | M15 formal research phase | not approved | requires clean reviewed commit, frozen preregistration and A-authorized sample |
 
 Current registered backends: `none`, `vector`, `mem0`, `letta`, `graphiti`.
@@ -44,6 +47,8 @@ it is not part of the four-backend Controlled matrix.
 | `world_update / temporal_chain_v2` | depth `1 → 2 → 3 → 4`; depth 3 is A→B→C→D | depth 3 only | construct accepted; remaining depth curve gated |
 | `memory_noise_stress / key_retention_v2` | `0/10/50/100/200/500/1000` | `0/10/50` | stopped at 50; installed Mem0/Letta target loss bracketed in `(10,50]`; no formal Failure Point |
 | `failure_learning / observed_precondition_v2` | configurable neutral `interference_count` | `0/10/50` | stopped at 50; target stayed rank1, transfer preparation changed vs NoMemory, no framework ranking |
+| `long_lived_memory / lifetime_v1` | event/session/update/similarity counts | `(8,2,1,1)`, `(20,4,2,5)`, `(50,8,4,15)` | bounded calibration accepted; Vector target loss begins in tested 20-event cell, Mem0/Letta retain through 50; diagnostic only |
+| `failure_learning_multi / observed_precondition_applicability_v4` | exactly one applicable and 1–2 heterogeneous inapplicable real failures plus neutral interference | terminal-corrected 2/3 failures × seeds 42/43/44 × four backends | accepted bounded diagnostic: None 0/3 both cells; Vector 2/3 then 3/3; Mem0/Letta 3/3; active retrieval ceiling, no monotone Failure Point |
 
 The historical `failure_transfer` module is unregistered and research-invalid.
 Failure transfer claims use only `failure_learning / observed_precondition_v2`,
@@ -58,9 +63,10 @@ It supports construct and mechanism observations only. It does not support a
 formal framework ranking, effect size, Failure Point, Native Minecraft claim or
 cost-efficiency comparison.
 
-Formal evidence requires all of the following before run 1:
+Formal evidence requires all of the following before run 1 on the exact
+producer revision being studied:
 
-1. external review owner creates a clean reviewed commit;
+1. external review owner creates and verifies a clean reviewed commit;
 2. source provenance is recorded and `--require-clean-source` passes;
 3. a frozen copy of `docs/preregistration_template.md` specifies hypotheses,
    cells, paired seeds, sample size, endpoints, exclusions and analysis;
@@ -70,16 +76,30 @@ Formal evidence requires all of the following before run 1:
 ## 5. Immediate work order
 
 1. TASK-024 source provenance and documentation alignment: **complete**.
-2. TASK-025 read-only source-freeze preflight: **PASS / accepted** in
-   `QA-025.md` and `A-FINAL-025.md`; full Python suite 378 passed.
-3. External review owner freezes the current worktree in git. Agents do not
-   stage, commit or push under repository rules. The producer-source
-   fingerprint before that freeze is
-   `8606370026c2bde49737ccb945c9b69ed4aa9cb64090aa06df6cb7c23e24e55f`
-   over 106 files; the clean commit must be recaptured and compared with
-   `scripts/verify_source_freeze.py --require-clean` plus exact expected
-   fingerprint and commit arguments.
-4. Only after the clean-source gate passes may A choose one informative,
-   semantics-consistent formal band and issue a separate preregistered task.
+2. TASK-025 stable-baseline freeze: **PASS / complete** at
+   `9fdced8fa9967a6df7b856b035485b41e84c06dc`; full Python suite 378 passed,
+   source fingerprint
+   `8606370026c2bde49737ccb945c9b69ed4aa9cb64090aa06df6cb7c23e24e55f`,
+   freeze verification PASS, pushed to `origin/main`.
+3. TASK-026 Phase A/B and first implementation: complete, followed by an A
+   objective re-audit that rejected homogeneous multi-failure v3 as an
+   incomplete construct.
+4. Corrective implementation: `observed_precondition_applicability_v4`,
+   heterogeneous fixture/evidence firewall, full Dashboard campaign/run/
+   replay/compare MVP and atomic live index are implemented; protocol remains
+   unchanged.
+5. Full verification and C independent QA: **PASS**. Final suites are Python
+   429 and TypeScript 40; terminal behavior, fixture, Dashboard, security and
+   source isolation independently pass.
+6. Bounded calibration: **complete**. Lifetime/noise remain diagnostics under
+   their recorded source. Homogeneous v3 and the first post-terminal-contaminated
+   v4 run are superseded. The accepted replacement v4 directory is
+   `calibration_task026_failure_applicability_v4_terminal_v1_20260809` under
+   source fingerprint
+   `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`.
+7. A final review: **PASS** in `A-FINAL-026.md`. A separately authorized
+   M15.1 clean freeze remains pending. Formal preregistration/campaign
+   authorization are later explicit tasks.
 
-No new campaign is currently authorized.
+No further diagnostic/formal campaign or Git freeze operation is currently
+authorized.

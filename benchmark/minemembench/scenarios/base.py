@@ -21,7 +21,7 @@ from ..agent.llm_provider import LLMProvider
 from ..core.client import BotClient
 from ..core.config import Settings
 from ..core.fairness import FairnessRecord
-from ..core.models import ActionResult, ExperienceEvent
+from ..core.models import ActionResult, ExperienceEvent, Position
 from ..core.runner import AgentRunner, RunLog
 from ..memory.base import MemoryBackend, MemoryItemSnapshot, MemoryQuery
 
@@ -160,6 +160,77 @@ class ObservedPreconditionGroundTruth(BaseModel):
     interference_event_ids: list[str] = Field(default_factory=list)
 
 
+class LifetimeGroundTruth(BaseModel):
+    """Out-of-band truth for ``long_lived_memory / lifetime_v1``.
+
+    The target route is derived from a real fixture observation before this
+    model is built.  It is evaluation-only and must never enter a planner
+    prompt, MemoryQuery, ExperienceEvent or action path.
+    """
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    semantics_version: Literal["lifetime_v1"]
+    target_event_id: str
+    item_name: str
+    pickup_position: Position
+    recipient: str
+    recipient_position: Position
+    relevant_update_event_ids: list[str] = Field(default_factory=list)
+    similar_event_ids: list[str] = Field(default_factory=list)
+    neutral_event_ids: list[str] = Field(default_factory=list)
+
+
+class ObservedPreconditionMultiGroundTruth(BaseModel):
+    """Out-of-band truth for the multi-observed-failure v3 treatment."""
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    semantics_version: Literal["observed_precondition_multi_v3"]
+    task_family: str
+    source_failure_event_ids: list[str] = Field(min_length=2)
+    source_entities: list[str] = Field(min_length=2)
+    transfer_entity: str
+    required_item: str
+    expected_source_action: str
+    expected_source_status: str
+    expected_source_errors: list[str] = Field(min_length=2)
+    interference_event_ids: list[str] = Field(default_factory=list)
+
+
+class ApplicabilityFailureGroundTruth(BaseModel):
+    """One real source failure in the M15.1 applicability treatment."""
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    event_id: str
+    entity: str
+    required_item: str
+    applicable_to_transfer: bool
+    expected_error: str
+
+
+class ObservedPreconditionApplicabilityGroundTruth(BaseModel):
+    """Out-of-band truth for heterogeneous failure applicability v4.
+
+    The applicability labels and required-item mapping are evaluation-only.
+    The planner receives only the raw environment-derived failure events.
+    """
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    semantics_version: Literal["observed_precondition_applicability_v4"]
+    task_family: str
+    source_failures: list[ApplicabilityFailureGroundTruth] = Field(min_length=2)
+    relevant_failure_event_ids: list[str] = Field(min_length=1)
+    irrelevant_failure_event_ids: list[str] = Field(min_length=1)
+    transfer_entity: str
+    required_item: str
+    expected_source_action: str
+    expected_source_status: str
+    interference_event_ids: list[str] = Field(default_factory=list)
+
+
 #: Typed out-of-band evaluation ground truth for a scenario run (TASK-011 /
 #: TASK-013 / TASK-016 / TASK-020). A discriminated union on
 #: `semantics_version`; the serialized shape of the earlier members is
@@ -169,9 +240,28 @@ EvaluationGroundTruth = Annotated[
     EntityKeyGroundTruth
     | TemporalChainGroundTruth
     | KeyRetentionGroundTruth
-    | ObservedPreconditionGroundTruth,
+    | ObservedPreconditionGroundTruth
+    | LifetimeGroundTruth
+    | ObservedPreconditionMultiGroundTruth
+    | ObservedPreconditionApplicabilityGroundTruth,
     Field(discriminator="semantics_version"),
 ]
+
+
+class ScenarioRunLog(BaseModel):
+    """One labeled run within a multi-session scenario result.
+
+    ``RunLog`` itself stays unchanged.  This wrapper supplies deterministic
+    phase/session ordering for replay while the historical primary
+    ``ScenarioResult.run_log`` remains backward-compatible.
+    """
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    phase: str
+    session_id: str | None = None
+    ordinal: int = Field(ge=0)
+    run_log: RunLog
 
 
 class ScenarioResult(BaseModel):
@@ -209,6 +299,10 @@ class ScenarioResult(BaseModel):
     #: (TASK-020: the real failed source attack of observed_precondition_v2),
     #: preserved verbatim as raw evidence. Empty for runs without any.
     observed_action_results: list[ActionResult] = Field(default_factory=list)
+    #: Structured scenario phase evidence. Empty for historical result files.
+    phase_records: list[PhaseRecord] = Field(default_factory=list)
+    #: Ordered session/final RunLogs. ``run_log`` remains the primary log.
+    run_logs: list[ScenarioRunLog] = Field(default_factory=list)
 
     def to_json(self) -> str:
         """Serialize the scenario result for the results directory."""

@@ -208,52 +208,63 @@ def compute_transfer_behavior_metrics(
             or step.arguments.get("name") == transfer_entity
         )
 
-    def is_preparation(step: RunStep) -> bool:
-        return (
-            step.action == "equip_item"
-            and step.arguments.get("item") == required_item
-            and step.action_status == ActionStatus.COMPLETED
-        )
-
     first_attack: int | None = None
-    preparation: int | None = None
+    first_attack_prepared = False
+    tracked_equipped_item: str | None = None
     completed_attacks: list[int] = []
     for index, step in enumerate(steps):
+        if (
+            step.action == "equip_item"
+            and step.action_status == ActionStatus.COMPLETED
+        ):
+            item = step.arguments.get("item")
+            tracked_equipped_item = str(item) if item is not None else None
         if is_transfer_attack(step):
             if first_attack is None:
                 first_attack = index
+                observed_hand = (
+                    step.world_state.equipped.hand.name
+                    if step.world_state is not None
+                    and step.world_state.equipped.hand is not None
+                    else None
+                )
+                # A stored pre-action WorldState is direct environment
+                # evidence. Historical/focused logs without it fall back to
+                # the ordered completed equip actions in this RunLog.
+                first_attack_prepared = (
+                    observed_hand == required_item
+                    if step.world_state is not None
+                    else tracked_equipped_item == required_item
+                )
             if step.action_status == ActionStatus.COMPLETED:
                 completed_attacks.append(index)
-        if preparation is None and is_preparation(step):
-            preparation = index
 
-    prepared_before = 1 if (
-        preparation is not None
-        and first_attack is not None
-        and preparation < first_attack
-    ) else 0
+    prepared_before = 1 if first_attack is not None and first_attack_prepared else 0
     failure_repeated = 1 if (
         first_attack is not None
         and steps[first_attack].action_status == ActionStatus.FAILED
-        and (preparation is None or first_attack < preparation)
+        and not first_attack_prepared
     ) else 0
     # Primary success is deliberately stricter than eventual completion: the
     # learned precondition must be applied before the FIRST transfer attack.
     # An attack-first failure followed by equip + recovery remains a primary
     # failure (TASK-020), even though the recovery is logged separately.
     transfer_success = 1 if (
-        prepared_before
-        and preparation is not None
-        and any(index > preparation for index in completed_attacks)
+        first_attack is not None
+        and first_attack_prepared
+        and steps[first_attack].action_status == ActionStatus.COMPLETED
     ) else 0
+    recovered_after_first_failure = (
+        first_attack is not None
+        and steps[first_attack].action_status == ActionStatus.FAILED
+        and any(index > first_attack for index in completed_attacks)
+    )
     return {
         "prepared_before_first_transfer_attack": prepared_before,
         "failure_repeated": failure_repeated,
         "transfer_attack_completed": 1 if completed_attacks else 0,
         "transfer_success": transfer_success,
-        "eventual_recovery_after_failure": 1
-        if (failure_repeated and completed_attacks)
-        else 0,
+        "eventual_recovery_after_failure": int(recovered_after_first_failure),
     }
 
 

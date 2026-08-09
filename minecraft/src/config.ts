@@ -4,12 +4,17 @@
 
 /**
  * Selectable mock fixtures (env BOT_MOCK_FIXTURE). "canonical" is the default
- * Controlled Mode world; "warded_hostiles_v1" is the scenario-specific
- * failure_learning/observed_precondition_v2 fixture (TASK-020). Any other
- * value is rejected at startup — the fixture is explicit process
- * configuration, never inferred.
+ * Controlled Mode world; the other names are versioned scenario-specific
+ * fixtures. Any other value is rejected at startup — the fixture is explicit
+ * process configuration, never inferred from a memory backend.
  */
-export const MOCK_FIXTURES = ["canonical", "warded_hostiles_v1"] as const;
+export const MOCK_FIXTURES = [
+  "canonical",
+  "warded_hostiles_v1",
+  "warded_hostiles_multi_v1",
+  "heterogeneous_failures_v1",
+  "lifetime_route_v1",
+] as const;
 export type MockFixtureName = (typeof MOCK_FIXTURES)[number];
 
 export interface Config {

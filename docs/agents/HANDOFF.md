@@ -1,9 +1,10 @@
 # MineMemBench unified handoff
 
-Updated: 2026-08-09 09:59 Asia/Shanghai
+Updated: 2026-08-09 Asia/Shanghai
 Owner: Agent A
-Status: **TASK-025 read-only freeze preflight is accepted; formal experiments
-await a clean externally frozen revision**
+Status: **TASK-026 M15.1 implementation, C QA, terminal-corrected v4
+calibration and A final review PASS; a separately authorized clean freeze
+remains pending; every formal experiment remains unauthorized**
 
 This is the single handoff/source-of-truth document for the next task. Update
 this file in place; do not create parallel handoff/project-status documents.
@@ -25,13 +26,15 @@ this file in place; do not create parallel handoff/project-status documents.
 
 ## 2. Repository/runtime snapshot
 
-- Branch/HEAD: `main` at `cbaa276` (`origin/main`), but the worktree is heavily
-  dirty with TASK-002..025 changes uncommitted. Current full status has 31
-  modified tracked paths and 107 untracked files at A-025 finalization;
-  preserve all of it and never reset or overwrite.
+- Stable baseline branch/HEAD at TASK-026 start: `main` and `origin/main` at
+  `9fdced8fa9967a6df7b856b035485b41e84c06dc`. The stable source fingerprint is
+  `8606370026c2bde49737ccb945c9b69ed4aa9cb64090aa06df6cb7c23e24e55f` and the
+  TASK-025 clean-freeze verification passed. Never amend, rewrite or overwrite
+  that baseline.
 - Tests on the accepted TASK-025 tree: Agent A and C independently reached
-  **378 Python passed**. TypeScript baseline: **34 passed**, `npm run build`
-  successful (TASK-025 did not touch TypeScript).
+  **378 Python passed** and the TypeScript baseline was **34 passed**. Current
+  corrected TASK-026 candidate independently passes **429 Python** and
+  **40 TypeScript** tests plus TypeScript build and Dashboard JS syntax.
 - Letta strict live verifier: PASS for exact add/retrieve, update, reset and
   fresh-scope isolation. Server `letta/letta:0.16.8`; Python client 1.12.1.
 - Installed memory packages: mem0ai 2.0.17; graphiti-core 0.29.3.
@@ -41,8 +44,9 @@ this file in place; do not create parallel handoff/project-status documents.
   Graphiti adapter exists but Controlled live acceptance is N/A: DeepSeek
   extraction produced zero/near-zero graph facts (documented in README).
 - Current registered scenarios: `delayed_recall`, `world_update`,
-  `failure_learning`, `memory_noise_stress`. `failure_transfer` is deliberately
-  removed because it fabricates the failure and solution.
+  `failure_learning`, `failure_learning_multi`, `memory_noise_stress`, and
+  `long_lived_memory`. `failure_transfer` is deliberately removed because it
+  fabricates the failure and solution.
 
 ## 3. Completed, verified infrastructure
 
@@ -70,10 +74,28 @@ this file in place; do not create parallel handoff/project-status documents.
   use `controlled-campaign/v4`, pre-register the complete source record before
   run 1 and stop on any result mismatch. The accepted current fingerprint is
   `8606370026c2bde49737ccb945c9b69ed4aa9cb64090aa06df6cb7c23e24e55f`
-  over 106 files. `--require-clean-source` rejects the current dirty worktree
-  before creating output. TASK-025 also adds a standalone read-only
+  over 106 files for the immutable TASK-025 baseline. The final reviewed
+  TASK-026 dirty-tree identity is
+  `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`
+  over 122 files; its replacement v4 calibration is diagnostic only.
+  `--require-clean-source` rejects the current dirty
+  worktree before creating output. TASK-025 also adds a standalone read-only
   `scripts/verify_source_freeze.py`; a fingerprint does not replace a clean
   commit.
+- Earlier dirty candidates and the first A-FINAL-026 conclusion are
+  superseded. The replacement `A-FINAL-026.md` accepts the corrected tree for
+  a separately authorized freeze after closing the heterogeneous construct,
+  Dashboard and objective-terminal-action gaps.
+- TASK-026 now adds `lifetime_v1` and heterogeneous
+  `observed_precondition_applicability_v4`, complete typed phase/run evidence,
+  and a loopback-only read-only dashboard with live campaign matrix, complete
+  run evidence, seekable semantic replay, trajectory markers and exact
+  same-seed four-backend compare. Producer modules never import dashboard
+  modules. Replay uses stored raw evidence only and labels utilization Unknown
+  unless a deterministic retrieved-event/action rule supports it.
+- New lifetime/v4 runs stop only when recorded environment evidence proves
+  completed delivery/target attack. The backend-neutral predicate never enters
+  prompt, memory query/event or action selection.
 
 ## 4. Raw experiment evidence (never pool these rounds)
 
@@ -95,6 +117,11 @@ separate.
 | `results/stress_controlled_failure_learning_v2_count0_round1/` | 12/12 valid observed-precondition v2 diagnostics. NoMemory 0/3; Vector/Mem0/Letta each 2/3. All nine memory-backed runs retrieved the source failure at rank1/top1 and equipped gold before the first transfer attack; the three memory failures switched back to the stone sword before attacking. Diagnostic only, no ranking/cost claim. QA: `docs/agents/qa/QA-021.md`; A audit: `docs/agents/reviews/A-FINAL-021.md`. |
 | `results/stress_controlled_failure_learning_v2_count10_round1/` | 12/12 valid paired diagnostics. NoMemory 0/3; Vector 2/3; Mem0/Letta 3/3. Every memory run retained the failure at rank1/top1 and prepared with gold. Mem0/Letta retrieval became interference-saturated without target displacement; success flips are action-selection noise. Diagnostic only. Corrected QA: `docs/agents/qa/QA-022.md`; A audit: `docs/agents/reviews/A-FINAL-022.md`. |
 | `results/stress_controlled_failure_learning_v2_count50_round1/` | 12/12 valid paired diagnostics. NoMemory 0/3; Vector 1/3; Mem0/Letta 3/3. All nine memory runs still retrieve the failure at rank1/top1 and prepare with gold; Vector failures are post-retrieval wrong re-equips. Mem0/Letta top-10 is fully interference-saturated without target displacement. Diagnostic ladder stops here. QA: `docs/agents/qa/QA-023.md`; A audit: `docs/agents/reviews/A-FINAL-023.md`. |
+| `results/calibration_task026_lifetime_v1_20260809/` | 36/36 terminal runs; three paired seeds across 8/20/50-event lifetime cells. NoMemory 0/9; Mem0/Letta 9/9; Vector 1/9 with six target-retrieval failures and two strict invalid-give recoveries. Dirty-source diagnostic only. |
+| `results/calibration_task026_failure_multi_v3_20260809/` | 24/24 terminal runs, but all failures share one gold rule. Retained as superseded homogeneous diagnostic history; it does **not** satisfy the multi-relevant applicability construct and must never pool with v4. |
+| `results/calibration_task026_noise_v2_20260809/` | 36/36 terminal runs. Noise10 is active-backend ceiling; noise30 discriminates via one Mem0 retrieval failure; noise50 is a shared Mem0/Letta retrieval-loss region. Smallest-set rule stops before 20/40/60. Dirty-source diagnostic only. |
+| `results/calibration_task026_failure_applicability_v4_20260809/` | 24/24 honest runs but superseded: successful tasks continued after target completion and polluted horizon/token/latency. Never pool with the replacement. |
+| `results/calibration_task026_failure_applicability_v4_terminal_v1_20260809/` | 24/24 accepted bounded diagnostics under `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`: None 0/3 both cells; Vector 2/3 at two failures and 3/3 at three; Mem0/Letta 3/3. All active relevant events rank 1; one Vector planning failure recovers but remains strict primary failure. No ranking or monotone Failure Point. |
 
 Round-4 metrics: NoMemory 0/3; vector 3/3 rank `[1,1,1]`; mem0 0/3
 rank `[2,N/A,N/A]`; letta 0/3 rank `[3,7,9]`. These are not a superiority
@@ -115,37 +142,32 @@ Formal delayed-recall expansion remains gated on a clean immutable reviewed
 revision and a pre-registered paired sample. Mem0's missing optional
 spaCy/BM25 features and non-normalized latency accounting must be disclosed.
 
-## 6. One next task (external review owner, then A/C)
+## 6. One next task
 
-TASK-025 is accepted in `docs/agents/reviews/A-FINAL-025.md`; C independently
-verified every requirement. No new campaign is authorized. The external review
-owner must now review and freeze the complete worktree in a clean git commit,
-then run:
-
-```powershell
-.venv\Scripts\python scripts\verify_source_freeze.py --require-clean `
-  --expected-source-fingerprint 8606370026c2bde49737ccb945c9b69ed4aa9cb64090aa06df6cb7c23e24e55f `
-  --expected-git-commit <new-clean-commit-sha>
-```
-
-After that external transition, A recaptures provenance and freezes one exact
-preregistration, C performs preflight, and A decides whether to authorize that
-formal sample.
+Request explicit project-owner Git freeze authorization. Only after that
+authorization may the review owner audit the exact worktree, create one clean
+TASK-026 commit, recapture its fingerprint and run strict source-freeze
+verification. Do not infer authorization from this handoff. No formal campaign
+or preregistration is authorized.
 
 ## 7. Other open gaps, ordered
 
-- **High — immutable reproducibility:** TASK-024 now records exact producer
-  provenance and rejects dirty formal runs, but the external review owner has
-  not yet created the required clean reviewed commit. Current dirty data remain
-  diagnostic evidence only.
+- **Resolved through review / freeze pending — immutable reproducibility:**
+  TASK-025 remains the immutable stable baseline. TASK-026 code, QA,
+  calibration and A review pass; a new clean freeze still requires explicit
+  Git authorization.
 - **Resolved — documentation drift:** `docs/development_plan.md`, README,
   stress design and experiment standard now describe the current M2/M3/M15
   state and evidence boundaries.
 - **High — formal statistics:** no formal n>=10 cell or Failure Point is
   approved. The draft experiment standard still says pending A ratification.
-- **High — core coverage:** the world-update depth ladder, memory-noise curve,
-  cross-session persistence and real observed failure transfer still need
-  Controlled validation. Failure transfer remains N/A.
+- **High — formal coverage:** M15.1 has bounded cross-session, noise and
+  heterogeneous applicability-v4 diagnostics. V4 active retrieval and
+  Mem0/Letta behavior have ceilings; there is no monotone active-backend
+  Failure Point. The world-update depth ladder and every formal n>=10 sample
+  remain gated.
+  Historical fabricated
+  `failure_transfer` remains N/A and unregistered.
 - **Medium — cost accounting:** memory-internal LLM/embedding calls and init
   time are not separated from per-operation latency. Current average add
   latency cannot support efficiency claims.
@@ -158,19 +180,21 @@ formal sample.
 
 ## 8. Evidence index
 
-- Latest implementation completion: `docs/agents/reviews/A-IMPLEMENTATION-025.md`
-- Latest independent code QA: `docs/agents/qa/QA-025.md`
-- Latest A final review: `docs/agents/reviews/A-FINAL-025.md`
-- Latest experiment QA: `docs/agents/qa/QA-023.md`
-- Latest raw evidence: `results/stress_controlled_failure_learning_v2_count50_round1/`
+- Latest implementation completion: `docs/agents/reviews/A-IMPLEMENTATION-026.md`
+- Latest independent code/data QA: `docs/agents/qa/QA-026.md`
+- Latest A final review: `docs/agents/reviews/A-FINAL-026.md` — PASS for a
+  separately authorized freeze; formal work remains unauthorized.
+- Latest calibration report: `docs/difficulty-calibration.md`
+- Latest raw evidence: terminal-corrected v4 replacement directory above;
+  lifetime/noise remain dirty-tree diagnostics; homogeneous v3 and first v4
+  are superseded.
 - Contamination review: `docs/agents/reviews/A-FINAL-006.md`
 - Semantic-time review: `docs/agents/reviews/A-FINAL-008.md`
 - Letta deployment/verification: `docs/letta_live.md`,
   `scripts/verify_letta_live.py`
 
-End state: Letta Live and M15 diagnostic infrastructure are implemented;
-memory-noise is diagnostically bracketed in `(10,50]`; failure-learning
-0/10/50 is accepted and stopped; TASK-024 provenance and TASK-025 read-only
-freeze preflight are accepted. No new campaign, formal ranking, or formal
-Failure Point is approved until a clean external revision and frozen
-preregistration exist.
+Current end state: the TASK-025 baseline remains frozen. Corrected M15.1
+lifetime, heterogeneous applicability-v4, objective terminal behavior and
+complete replay/dashboard pass implementation QA, replacement calibration and
+A final review. The current tree is dirty; no new freeze, formal ranking,
+formal Failure Point, preregistration or formal campaign is approved.

@@ -1,7 +1,12 @@
 import { once } from "node:events";
 import { beforeEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config";
-import { MockAdapter, WARDED_ATTACK_ERROR } from "../src/mock";
+import {
+  HETEROGENEOUS_FAILURE_REQUIREMENTS,
+  MockAdapter,
+  WARDED_ATTACK_ERROR,
+  heterogeneousFailureError,
+} from "../src/mock";
 import { ActionRequestSchema, type ActionRequest, type RawGameEvent } from "../src/protocol";
 
 function action(body: unknown): ActionRequest {
@@ -76,6 +81,115 @@ describe("MockAdapter", () => {
       expect(completed.status).toBe("completed");
       expect(completed.result).toEqual({ entity_name: entityName, killed: true });
       expect(completed.state_after.nearby_entities.map((e) => e.name)).not.toContain(entityName);
+    },
+  );
+
+  it("warded_hostiles_multi_v1 exposes four distinct real failure sources", async () => {
+    const warded = new MockAdapter({ fixture: "warded_hostiles_multi_v1" });
+    await warded.connect();
+    const initial = await warded.getState();
+    expect(initial.nearby_entities.map((e) => e.name)).toEqual([
+      "zombie",
+      "skeleton",
+      "spider",
+      "creeper",
+    ]);
+    for (const entity of initial.nearby_entities) {
+      const failed = await warded.execute(
+        action({ action: "attack_entity", arguments: { entity_id: entity.id } }),
+        5000,
+      );
+      expect(failed.status).toBe("failed");
+      expect(failed.error).toBe(WARDED_ATTACK_ERROR);
+      expect(failed.state_after.nearby_entities.map((item) => item.id)).toContain(entity.id);
+    }
+  });
+
+  it("heterogeneous_failures_v1 exposes three distinct prerequisite families", async () => {
+    const adapter = new MockAdapter({ fixture: "heterogeneous_failures_v1" });
+    await adapter.connect();
+    const initial = await adapter.getState();
+    expect(initial.inventory.map((item) => item.name)).toEqual([
+      "stone",
+      "stone_sword",
+      "gold_nugget",
+      "iron_ingot",
+      "string",
+    ]);
+    for (const [entityName, requiredItem] of Object.entries(HETEROGENEOUS_FAILURE_REQUIREMENTS)) {
+      const isolated = new MockAdapter({ fixture: "heterogeneous_failures_v1" });
+      await isolated.connect();
+      const isolatedState = await isolated.getState();
+      const entity = isolatedState.nearby_entities.find((item) => item.name === entityName);
+      expect(entity).toBeDefined();
+      const failed = await isolated.execute(
+        action({ action: "attack_entity", arguments: { entity_id: entity!.id } }),
+        5000,
+      );
+      expect(failed.status).toBe("failed");
+      expect(failed.error).toBe(heterogeneousFailureError(entityName, requiredItem));
+      expect(failed.state_after.nearby_entities.map((item) => item.id)).toContain(entity!.id);
+
+      const equipped = await isolated.execute(
+        action({ action: "equip_item", arguments: { item: requiredItem } }),
+        5000,
+      );
+      expect(equipped.status).toBe("completed");
+      const completed = await isolated.execute(
+        action({ action: "attack_entity", arguments: { entity_id: entity!.id } }),
+        5000,
+      );
+      expect(completed.status).toBe("completed");
+    }
+  });
+
+  it("lifetime_route_v1 enforces discover -> collect -> return -> give", async () => {
+    const lifetime = new MockAdapter({ fixture: "lifetime_route_v1" });
+    await lifetime.connect();
+    const initial = await lifetime.getState();
+    expect(initial.nearby_entities.map((e) => e.name)).not.toContain("lifetime_token");
+
+    const earlyCollect = await lifetime.execute(
+      action({ action: "collect_item", arguments: { name: "lifetime_token" } }),
+      5000,
+    );
+    expect(earlyCollect.status).toBe("failed");
+
+    const discovered = await lifetime.execute(
+      action({ action: "move_to", arguments: { x: 40, y: 64, z: 0 } }),
+      5000,
+    );
+    expect(discovered.state_after.nearby_entities.map((e) => e.name)).toContain("lifetime_token");
+    expect(discovered.state_after.nearby_players.map((p) => p.username)).not.toContain("Steve");
+
+    const collected = await lifetime.execute(
+      action({ action: "collect_item", arguments: { name: "lifetime_token" } }),
+      5000,
+    );
+    expect(collected.status).toBe("completed");
+    const tooFar = await lifetime.execute(
+      action({ action: "give_item", arguments: { username: "Steve", item: "lifetime_token" } }),
+      5000,
+    );
+    expect(tooFar.status).toBe("failed");
+    expect(tooFar.error).toMatch(/player not visible/);
+
+    await lifetime.execute(
+      action({ action: "move_to", arguments: { x: 1, y: 64, z: 2 } }),
+      5000,
+    );
+    const delivered = await lifetime.execute(
+      action({ action: "give_item", arguments: { username: "Steve", item: "lifetime_token" } }),
+      5000,
+    );
+    expect(delivered.status).toBe("completed");
+    expect(delivered.result).toEqual({ item: "lifetime_token", count: 1, target: "Steve" });
+  });
+
+  it.each(["warded_hostiles_multi_v1", "heterogeneous_failures_v1", "lifetime_route_v1"] as const)(
+    "accepts the versioned %s fixture selector",
+    (fixture) => {
+      expect(loadConfig({ BOT_MOCK: "1", BOT_MOCK_FIXTURE: fixture }).mockFixture).toBe(fixture);
     },
   );
 

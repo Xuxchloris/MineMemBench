@@ -27,6 +27,7 @@ SOURCE_PROVENANCE_SCHEMA = "minemembench-source/v1"
 # stores, server worlds, caches or user-owned data.
 SOURCE_GLOBS: tuple[str, ...] = (
     "benchmark/minemembench/**/*.py",
+    "benchmark/minemembench/dashboard/static/*",
     "benchmark/tests/**/*.py",
     "benchmark/tests/fixtures/**/*.json",
     "minecraft/src/**/*.ts",

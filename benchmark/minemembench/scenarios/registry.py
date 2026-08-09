@@ -10,6 +10,8 @@ from __future__ import annotations
 from .base import Scenario
 from .delayed_recall import DelayedRecallScenario
 from .failure_learning import FailureLearningScenario
+from .failure_learning_multi import FailureLearningMultiScenario
+from .long_lived_memory import LongLivedMemoryScenario
 from .memory_noise_stress import MemoryNoiseStressScenario
 from .world_update import WorldUpdateScenario
 
@@ -22,6 +24,8 @@ _SCENARIOS: dict[str, type[Scenario]] = {
     DelayedRecallScenario.name: DelayedRecallScenario,
     WorldUpdateScenario.name: WorldUpdateScenario,
     FailureLearningScenario.name: FailureLearningScenario,
+    FailureLearningMultiScenario.name: FailureLearningMultiScenario,
+    LongLivedMemoryScenario.name: LongLivedMemoryScenario,
     MemoryNoiseStressScenario.name: MemoryNoiseStressScenario,
     # `failure_transfer` is deliberately NOT registered (TASK-002 safety
     # gate): it fabricates the missing-tool failure and its solution instead

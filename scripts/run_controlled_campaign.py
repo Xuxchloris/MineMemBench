@@ -201,6 +201,14 @@ def prepare_campaign(args: argparse.Namespace) -> tuple[dict[str, Any] | None, s
             "failure_semantics_version",
             "observed_precondition_v2",
         ),
+        "failure_learning_multi": (
+            "failure_semantics_version",
+            "observed_precondition_applicability_v4",
+        ),
+        "long_lived_memory": (
+            "lifetime_semantics_version",
+            "lifetime_v1",
+        ),
     }
     requirement = explicit_version_required.get(args.scenario)
     if requirement is not None:
@@ -510,6 +518,8 @@ def _validate_run_result(
 
 def _failure_evidence_fingerprints(
     path: Path,
+    *,
+    expected_failure_count: int = 1,
 ) -> tuple[tuple[str, str] | None, str | None]:
     """Fingerprint the two separately audited TASK-020 causal inputs.
 
@@ -534,25 +544,94 @@ def _failure_evidence_fingerprints(
         normalized = dict(event)
         normalized["episode_id"] = "<episode>"
         normalized_events.append(normalized)
-    if sum(event.get("event_type") == "task_failed" for event in normalized_events) != 1:
-        return None, "failure-learning v2 must inject exactly one task_failed event"
+    failure_count = sum(
+        event.get("event_type") == "task_failed" for event in normalized_events
+    )
+    if failure_count != expected_failure_count:
+        return None, (
+            "failure-learning result must inject exactly "
+            f"{expected_failure_count} task_failed event(s)"
+        )
+
+    ground_truth = data.get("evaluation_ground_truth")
+    if (
+        isinstance(ground_truth, dict)
+        and ground_truth.get("semantics_version")
+        == "observed_precondition_applicability_v4"
+    ):
+        failure_ids = {
+            str(event.get("event_id"))
+            for event in injected
+            if isinstance(event, dict) and event.get("event_type") == "task_failed"
+        }
+        relevant = ground_truth.get("relevant_failure_event_ids")
+        irrelevant = ground_truth.get("irrelevant_failure_event_ids")
+        sources = ground_truth.get("source_failures")
+        if (
+            not isinstance(relevant, list)
+            or len(relevant) != 1
+            or not isinstance(irrelevant, list)
+            or len(irrelevant) != expected_failure_count - 1
+            or set(relevant) & set(irrelevant)
+            or set(relevant) | set(irrelevant) != failure_ids
+        ):
+            return None, (
+                "applicability v4 ground-truth relevant/irrelevant partition "
+                "does not exactly cover the real task_failed event stream"
+            )
+        if (
+            not isinstance(sources, list)
+            or len(sources) != expected_failure_count
+            or sum(
+                isinstance(source, dict)
+                and source.get("applicable_to_transfer") is True
+                for source in sources
+            )
+            != 1
+            or {
+                str(source.get("event_id"))
+                for source in sources
+                if isinstance(source, dict)
+            }
+            != failure_ids
+        ):
+            return None, (
+                "applicability v4 source-failure ground truth is incomplete "
+                "or does not contain exactly one applicable real failure"
+            )
+        forbidden_keys = {"required_item", "applicable_to_transfer", "solution"}
+        for event in injected:
+            if not isinstance(event, dict) or event.get("event_type") != "task_failed":
+                continue
+            context = event.get("context")
+            if not isinstance(context, dict) or forbidden_keys & set(context):
+                return None, (
+                    "applicability v4 leaked evaluation labels or an authored "
+                    "solution into a planner-visible failure event"
+                )
 
     observed = data.get("observed_action_results")
-    if not isinstance(observed, list) or len(observed) != 1:
-        return None, "failure-learning v2 must carry exactly one source ActionResult"
-    if not isinstance(observed[0], dict):
-        return None, "failure-learning v2 source ActionResult is not an object"
-    source = {
-        key: value
-        for key, value in observed[0].items()
-        if key not in {"action_id", "started_at", "finished_at"}
-    }
-    state_after = source.get("state_after")
-    if not isinstance(state_after, dict):
-        return None, "failure-learning v2 source ActionResult has no state_after"
-    normalized_state = dict(state_after)
-    normalized_state.pop("timestamp", None)
-    source["state_after"] = normalized_state
+    if not isinstance(observed, list) or len(observed) != expected_failure_count:
+        return None, (
+            "failure-learning result must carry exactly "
+            f"{expected_failure_count} source ActionResult(s)"
+        )
+    normalized_sources: list[dict[str, Any]] = []
+    for raw_source in observed:
+        if not isinstance(raw_source, dict):
+            return None, "failure-learning source ActionResult is not an object"
+        source = {
+            key: value
+            for key, value in raw_source.items()
+            if key not in {"action_id", "started_at", "finished_at"}
+        }
+        state_after = source.get("state_after")
+        if not isinstance(state_after, dict):
+            return None, "failure-learning source ActionResult has no state_after"
+        normalized_state = dict(state_after)
+        normalized_state.pop("timestamp", None)
+        source["state_after"] = normalized_state
+        normalized_sources.append(source)
 
     def digest(payload: Any) -> str:
         encoded = json.dumps(
@@ -560,7 +639,7 @@ def _failure_evidence_fingerprints(
         ).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 
-    return (digest(normalized_events), digest(source)), None
+    return (digest(normalized_events), digest(normalized_sources)), None
 
 
 def run_campaign(
@@ -661,12 +740,19 @@ def run_campaign(
                 )
                 if (
                     validation_error is None
-                    and entry["scenario"] == "failure_learning"
+                    and entry["scenario"]
+                    in {"failure_learning", "failure_learning_multi"}
                     and entry["effective_params"].get("failure_semantics_version")
-                    == "observed_precondition_v2"
+                    in {
+                        "observed_precondition_v2",
+                        "observed_precondition_applicability_v4",
+                    }
                 ):
+                    expected_failures = int(
+                        entry["effective_params"].get("observed_failure_count", 1)
+                    )
                     fingerprints, evidence_error = _failure_evidence_fingerprints(
-                        produced[0]
+                        produced[0], expected_failure_count=expected_failures
                     )
                     if evidence_error is not None:
                         validation_error = evidence_error

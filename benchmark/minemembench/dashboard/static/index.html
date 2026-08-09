@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>MineMemBench Observatory</title>
+    <link rel="stylesheet" href="/app.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">M15.1 · READ-ONLY OBSERVABILITY</p>
+        <h1>MineMemBench Observatory</h1>
+        <p class="subtitle">Memory → retrieval → decision → embodied outcome, backed by raw evidence.</p>
+      </div>
+      <div class="live"><span id="live-dot"></span><span id="live-text">Indexing</span></div>
+    </header>
+    <main>
+      <section id="overview" class="overview" aria-label="Global statistics"></section>
+
+      <section class="campaign-section">
+        <div class="section-head">
+          <div><p class="eyebrow">LIVE CAMPAIGNS</p><h2>Campaign Overview</h2></div>
+          <button id="all-campaigns" class="compact active">Show all runs</button>
+        </div>
+        <div id="campaigns" class="campaign-list"></div>
+      </section>
+
+      <section class="workspace">
+        <aside class="panel runs-panel">
+          <div class="panel-head">
+            <div><p class="eyebrow">RAW EVIDENCE</p><h2>Runs</h2><small id="run-scope" class="muted"></small></div>
+            <input id="filter" type="search" placeholder="scenario, backend, seed">
+          </div>
+          <div id="runs" class="run-list"></div>
+        </aside>
+
+        <section class="panel detail-panel">
+          <div id="empty" class="empty-state">
+            <p class="eyebrow">RAW JSON IS THE SOURCE OF TRUTH</p>
+            <h2>Select a run</h2>
+            <p>Inspect provenance, available memory, retrieval, planning, environment outcomes and deterministic replay.</p>
+          </div>
+          <div id="detail" hidden>
+            <div class="detail-title">
+              <div><p id="detail-kicker" class="eyebrow"></p><h2 id="detail-name"></h2></div>
+              <button id="compare-button">Compare same seed</button>
+            </div>
+            <div id="run-facts" class="facts"></div>
+            <div class="tabs" role="tablist">
+              <button class="tab active" data-tab="evidence">Run evidence</button>
+              <button class="tab" data-tab="replay">Replay</button>
+              <button class="tab" data-tab="metrics">Metrics & cost</button>
+              <button class="tab" data-tab="compare">Compare</button>
+            </div>
+
+            <div id="tab-evidence" class="tab-body">
+              <div class="evidence-grid">
+                <section class="evidence-card wide"><p class="eyebrow">GOAL & EVALUATION</p><div id="goal-evaluation"></div></section>
+                <section class="evidence-card"><p class="eyebrow">MEMORY HISTORY OFFERED</p><div id="memory-history"></div></section>
+                <section class="evidence-card"><p class="eyebrow">OBSERVED SOURCE ACTIONS</p><div id="observed-actions"></div></section>
+                <section class="evidence-card"><p class="eyebrow">EVALUATION GROUND TRUTH</p><div id="ground-truth"></div></section>
+                <section class="evidence-card"><p class="eyebrow">FAIRNESS / PROVENANCE</p><div id="fairness-detail"></div></section>
+              </div>
+            </div>
+
+            <div id="tab-replay" class="tab-body" hidden>
+              <div class="replay-controls">
+                <button id="first" title="First frame">|◀</button>
+                <button id="prev" title="Previous frame">◀</button>
+                <button id="play">Play</button>
+                <button id="next" title="Next frame">▶</button>
+                <button id="last" title="Last frame">▶|</button>
+                <label>Speed <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
+                <label>Jump <select id="jump"><option value="0">Frame 1</option></select></label>
+                <span id="frame-counter"></span>
+              </div>
+              <input id="seek" class="seek" type="range" min="0" max="0" value="0" aria-label="Replay position">
+              <div><p class="eyebrow">SEMANTIC TIMELINE</p><div id="timeline" class="timeline"></div></div>
+              <div class="replay-grid">
+                <div id="frame" class="frame"></div>
+                <div>
+                  <p class="eyebrow">EVIDENCE-ONLY X / Z TRAJECTORY</p>
+                  <svg id="trajectory" viewBox="0 0 560 360" aria-label="Agent trajectory"></svg>
+                  <p id="trajectory-note" class="disclaimer"></p>
+                  <div id="trajectory-legend" class="legend"></div>
+                </div>
+              </div>
+            </div>
+
+            <div id="tab-metrics" class="tab-body" hidden>
+              <div id="cost-summary" class="cost-strip"></div>
+              <div id="metrics" class="metric-grid"></div>
+            </div>
+            <div id="tab-compare" class="tab-body" hidden><div id="compare"></div></div>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

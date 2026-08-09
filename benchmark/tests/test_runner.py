@@ -124,6 +124,26 @@ async def test_reaches_success_at_and_stops() -> None:
     assert step.reason == "heading to the goal"
 
 
+async def test_objective_step_predicate_stops_without_post_completion_actions() -> None:
+    llm = FakeLLM([WAIT_OUTPUT] * 5)
+    bot = FakeBotClient()
+    runner = AgentRunner(bot, NoMemoryBackend(), llm)
+
+    log = await runner.run_goal(
+        "stop after the first completed wait",
+        max_steps=5,
+        success_when=lambda step: (
+            step.action == "wait"
+            and step.action_status is ActionStatus.COMPLETED
+        ),
+    )
+
+    assert log.success is True
+    assert len(log.steps) == 1
+    assert log.llm_calls == 1
+    assert len(bot.execute_calls) == 1
+
+
 async def test_success_radius_is_two_blocks() -> None:
     llm = FakeLLM([_move_to_output(11, 64, 10)])  # 1 block away from target
     runner = AgentRunner(FakeBotClient(), NoMemoryBackend(), llm)
