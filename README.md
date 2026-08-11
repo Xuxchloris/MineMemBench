@@ -106,22 +106,29 @@ explicit v2 semantics below.
 |---|---|---|
 | `delayed_recall / entity_key_v2` | `(interference_count, similar_distractor_count)` planned as (10,0)/(50,5)/(200,20)/(500,50) | v2 (200,20) diagnostic only; legacy rounds are non-poolable |
 | `world_update / temporal_chain_v2` | `update_depth` 1–4; depth 3 is A→B→C→D | depth-3 diagnostic accepted; remaining curve gated |
-| `memory_noise_stress / key_retention_v2` | `noise_count` 0/10/50/100/200/500/1000 | 0/10/50 diagnostics accepted, then stopped; no formal Failure Point |
+| `memory_noise_stress / key_retention_v2` | `noise_count` 0/10/50/100/200/500/1000 | 0/10/50 diagnostics accepted and stopped; attempt-2 Formal separately freezes 10/30/50 and its preregistered Failure Point rule |
 | `failure_learning / observed_precondition_v2` | `interference_count` | real failed ActionResult → different-entity transfer; 0/10/50 diagnostics accepted, then stopped |
 | `long_lived_memory / lifetime_v1` | `lifetime_event_count`, `session_count`, `relevant_update_count`, `similar_event_count` | TASK-026 bounded 8/20/50-event diagnostics; shared episode with transcript reset and objective locate/collect/return/deliver termination |
 | `failure_learning_multi / observed_precondition_applicability_v4` | `observed_failure_count` 2–3, `interference_count` | one applicable plus 1–2 heterogeneous inapplicable real ActionResult failures; opaque non-ordinal alpha→iron, beta→string, gamma→gold mapping; completed target attack terminates the run; historical homogeneous v3 diagnostics are superseded |
 | `failure_transfer` | — | **SUSPENDED / unregistered**: fabricated causal failure, invalid for claims |
 
-### Controlled Formal V1 plan (TASK-027)
+### Controlled Formal V1 recovery plan (TASK-027)
 
 TASK-026 is frozen and synchronized at commit
 `592e4ab72193fa541a1a536a1eab2752b03acad6` (source fingerprint
 `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`).
-Formal V1 is a fixed paired Controlled study of `none`, `vector`, `mem0` and
-`letta`: eight pre-registered treatment cells × fresh seeds `1001–1010` =
-320 runs. The cells are delayed recall `(200,20)`, world update depth 3,
+The first Formal producer identity was clean-frozen and pushed at
+`7c96df88c4208e47217da984f61798be051f56da`, but its campaign stopped
+fail-closed after an external planner-DNS failure (`271` producer-ok, `1`
+producer-failed, `48` pending, no retry). That root is audit evidence only and
+cannot support conclusions.
+
+Formal V1 attempt 2 is a new fixed paired Controlled study of `none`, `vector`,
+`mem0` and `letta`: eight preregistered treatment cells × fresh seeds
+`1011–1020` = 320 runs. The cells are delayed recall `(200,20)`, world update depth 3,
 memory noise `10/30/50`, and composite lifetime `L1/L2/L3`. Calibration seeds
-`42/43/44` and failure-learning v4 remain diagnostic and are never pooled.
+`42/43/44`, attempt-1 seeds/results and failure-learning v4 remain separate
+and are never pooled.
 
 The primary endpoint is strict evaluator-derived `task_success`. Active
 backend comparisons use exact paired McNemar tests, paired risk differences,
@@ -129,7 +136,8 @@ a deterministic paired-bootstrap 95% CI, and Holm correction across the 24
 pre-registered primary comparisons. Formal execution is permitted only after
 the preregistration, analysis code, source identity, live Letta verification,
 fixture/reset gates, and exact campaign plan are frozen. See
-`docs/preregistration_m15_formal_v1.md`.
+`docs/preregistration_m15_formal_v1_attempt2.md` and the preserved incident
+record `docs/agents/reviews/A-INCIDENT-027-ATTEMPT1.md`.
 
 Configuration example only (not an experiment authorization):
 
@@ -175,7 +183,7 @@ source or a non-empty Formal directory and has no resume/retry path:
   --expected-source-fingerprint <frozen-source-sha256>
 
 .venv\Scripts\python scripts\analyze_formal_m15.py `
-  --results-dir results\formal_m15_v1_20260811
+  --results-dir results\formal_m15_v1_20260811_attempt2
 ```
 
 The verifier prints compact hashes/counts/booleans only. Diagnostic mode
@@ -256,6 +264,9 @@ the benchmark.
 - Existing seeds `42/43/44` are diagnostic calibration only, not a formal
   ranking, effect size, Failure Point, Native-Minecraft result, or
   cost-efficiency comparison. Formal V1 uses a separate fixed paired sample.
+- Formal attempt 1 is an incomplete producer incident, not a pilot or partial
+  result. It is retained under `results/formal_m15_v1_20260811` and excluded
+  from every attempt-2 denominator and claim.
 - The M15.1 TASK-026 implementation is clean-frozen and pushed at commit
   `592e4ab72193fa541a1a536a1eab2752b03acad6`, source fingerprint
   `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`;
@@ -303,5 +314,5 @@ the benchmark.
 - [x] M15A Letta Docker live memory-only integration
 - [x] M15B versioned stress scenarios + Controlled diagnostic infrastructure
 - [x] M15.1 lifetime/multi-failure difficulty plus read-only replay/dashboard
-- [ ] TASK-027 Formal preregistration freeze, fixed 320-run study and analysis
+- [ ] TASK-027 Formal attempt-2 freeze, fixed 320-run study and analysis
 - [ ] Later: Graphiti, ReMe, Text2Mem, A-Mem, Generative Agents memory

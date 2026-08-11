@@ -2,9 +2,10 @@
 
 Updated: 2026-08-11 Asia/Shanghai
 Owner: Agent A
-Status: **TASK-026 M15.1 clean freeze and remote push complete at
-`592e4ab72193fa541a1a536a1eab2752b03acad6`; TASK-027 Formal V1
-preregistration/analysis implementation is in progress; Formal runs started=0**
+Status: **TASK-027 attempt 1 was clean-frozen/pushed at `7c96df88...` and
+stopped fail-closed on an external planner-DNS producer failure; it is
+abandoned with no retry. Attempt 2 preregistration/recovery is in progress and
+its Formal runs started=0.**
 
 This is the single handoff/source-of-truth document for the next task. Update
 this file in place; do not create parallel handoff/project-status documents.
@@ -15,10 +16,10 @@ this file in place; do not create parallel handoff/project-status documents.
   status/diff, tests and raw logs before acting.
 - `docs/development_plan.md` is now the current plan. The root-level
   `docsdevelopment_plan.md` is historical M4-era context only.
-- TASK-027 explicitly authorizes the sole executing review owner to make only
-  the preregistration-freeze commit/push and the final-results commit/push
-  after their respective gates pass. This does not authorize unrelated Git
-  operations or history rewrites.
+- TASK-027 authorizes gated research freezes and requires a new commit, study
+  identity, preregistration and empty root after a stopped integrity attempt.
+  This does not authorize unrelated Git operations, retries, splicing, amend,
+  force-push or history rewriting.
 - Do not read/print `.env`,
   change `docs/protocol.md`, fabricate results, or run network unit tests.
 - Do not add another memory framework or optimize Dashboard in TASK-027.
@@ -26,12 +27,11 @@ this file in place; do not create parallel handoff/project-status documents.
 ## 2. Repository/runtime snapshot
 
 - Current stable branch/HEAD: local `main`, `origin/main` and remote
-  `refs/heads/main` are synchronized at
-  `592e4ab72193fa541a1a536a1eab2752b03acad6`. The clean TASK-026 source
-  fingerprint is
-  `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`
-  over 122 allowlisted files; strict freeze verification passed. Never amend,
-  rewrite or overwrite TASK-025/TASK-026 history.
+  `refs/heads/main` are synchronized at attempt-1 freeze
+  `7c96df88c4208e47217da984f61798be051f56da`. Its clean source fingerprint is
+  `f21af111b86926aca18e77846e3b37f52d7b235facdc242daf0977a314ffc38a`
+  over 126 allowlisted files; strict verification passed before and after the
+  stop. Never amend or rewrite TASK-025/TASK-026/attempt-1 history.
 - Tests on the accepted TASK-025 tree: Agent A and C independently reached
   **378 Python passed** and the TypeScript baseline was **34 passed**. Current
   corrected TASK-026 candidate independently passes **429 Python** and
@@ -145,12 +145,12 @@ spaCy/BM25 features and non-normalized latency accounting must be disclosed.
 
 ## 6. One next task
 
-Complete TASK-027's frozen Formal V1 preregistration and fail-closed analysis
-tests, pass all pre-Formal gates, then create/push the explicitly authorized
-preregistration freeze. Only that exact clean producer identity may execute
-the fixed eight-cell × four-backend × seeds 1001–1010 Controlled study. Formal
-results directory: `results/formal_m15_v1_20260811`; it is currently absent and
-Formal runs started=0.
+Complete the new attempt-2 preregistration and audit-accounting fix, pass every
+pre-Formal gate, then clean-freeze/push the recovery producer. Only that exact
+identity may execute the fixed eight-cell × four-backend × fresh seeds
+1011–1020 Controlled study in the new empty root
+`results/formal_m15_v1_20260811_attempt2`. Attempt-1 raw evidence remains at
+`results/formal_m15_v1_20260811` and must never be resumed or pooled.
 
 ## 7. Other open gaps, ordered
 
@@ -159,14 +159,17 @@ Formal runs started=0.
 - **Resolved — documentation drift:** `docs/development_plan.md`, README,
   stress design and experiment standard now describe the current M2/M3/M15
   state and evidence boundaries.
+- **High / resolved by abandonment — attempt-1 producer stop:** DeepSeek DNS
+  resolution failed at one long-lived slot. Evidence is preserved in
+  `A-INCIDENT-027-ATTEMPT1.md`; 0 retries and 0 exclusions.
 - **In progress — formal statistics:** TASK-027 fixes N=10 paired seeds,
   exact McNemar, paired risk difference, deterministic bootstrap CI, Holm
   correction and non-interpolated Failure Points before run 1.
 - **High — formal coverage:** M15.1 has bounded cross-session, noise and
   heterogeneous applicability-v4 diagnostics. V4 active retrieval and
   Mem0/Letta behavior have ceilings; there is no monotone active-backend
-  Failure Point. The world-update depth ladder and every formal n>=10 sample
-  remain gated.
+  Failure Point. Non-preregistered expansion remains gated; the exact attempt-2
+  n=10 Formal sample is authorized only after its new freeze gates pass.
   Historical fabricated
   `failure_transfer` remains N/A and unregistered.
 - **Medium — cost accounting:** memory-internal LLM/embedding calls and init
@@ -183,8 +186,9 @@ Formal runs started=0.
 
 - Latest implementation completion: `docs/agents/reviews/A-IMPLEMENTATION-026.md`
 - Latest independent code/data QA: `docs/agents/qa/QA-026.md`
-- Latest A final review: `docs/agents/reviews/A-FINAL-026.md` — PASS for a
-  separately authorized freeze; formal work remains unauthorized.
+- Latest TASK-026 A final review: `docs/agents/reviews/A-FINAL-026.md` — PASS
+  for its historical freeze. TASK-027 attempt-2 authority and gate are recorded
+  separately in `A-PREFLIGHT-027-ATTEMPT2.md`.
 - Latest calibration report: `docs/difficulty-calibration.md`
 - Latest raw evidence: terminal-corrected v4 replacement directory above;
   lifetime/noise remain dirty-tree diagnostics; homogeneous v3 and first v4
@@ -195,5 +199,6 @@ Formal runs started=0.
   `scripts/verify_letta_live.py`
 
 Current end state: TASK-026 is frozen, verified and pushed. TASK-027 is
-preparing the immutable Formal producer and analysis contract; no Formal run
-has started and no Formal result or conclusion exists yet.
+preparing the independent attempt-2 producer and analysis contract. Attempt 1
+is incomplete and rejected for analysis; attempt-2 runs started=0, so no valid
+Formal result or conclusion exists yet.

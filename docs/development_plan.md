@@ -2,9 +2,9 @@
 
 Updated: 2026-08-11
 Owner: Agent A
-Status: **TASK-026 is clean-frozen, verified and pushed at `592e4ab...`;
-TASK-027 Formal V1 preregistration and frozen analysis are in progress;
-Formal runs started=0**
+Status: **TASK-027 attempt 1 stopped fail-closed after an external planner-DNS
+failure and is abandoned without retry; attempt 2 recovery preregistration is
+in progress; attempt-2 Formal runs started=0**
 
 This is the current development plan. The root-level
 `docsdevelopment_plan.md` is the historical M4-era user prompt and is retained
@@ -33,7 +33,7 @@ Controlled results are separate treatments and must never be pooled.
 | M15B Controlled stress infrastructure | complete | deterministic streams, fixtures, campaign-local stores, causal snapshots, fairness/reset audit |
 | M15 stable baseline | frozen | commit `9fdced8fa9967a6df7b856b035485b41e84c06dc`; source fingerprint `8606370026c2bde49737ccb945c9b69ed4aa9cb64090aa06df6cb7c23e24e55f`; freeze verification PASS |
 | M15.1 difficulty + dashboard/replay | frozen / pushed | commit `592e4ab72193fa541a1a536a1eab2752b03acad6`; fingerprint `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`; strict verification PASS |
-| M15 Formal V1 research phase | preregistration implementation | fixed Controlled study: 8 treatment cells × 4 backends × fresh paired seeds 1001–1010 = 320; no run started |
+| M15 Formal V1 research phase | attempt-2 recovery | attempt 1: 271 ok + 1 producer failure + 48 pending, abandoned; attempt 2: same eight cells × four backends × fresh paired seeds 1011–1020 = 320, no run started |
 
 Current registered backends: `none`, `vector`, `mem0`, `letta`, `graphiti`.
 Graphiti live acceptance remains N/A under the controlled DeepSeek extractor;
@@ -45,7 +45,7 @@ it is not part of the four-backend Controlled matrix.
 |---|---|---|---|
 | `delayed_recall / entity_key_v2` | `(10,0) → (50,5) → (200,20) → (500,50)` | only v2 `(200,20)`; older cells use non-poolable legacy treatments | further cells gated pending immutable revision/A task |
 | `world_update / temporal_chain_v2` | depth `1 → 2 → 3 → 4`; depth 3 is A→B→C→D | depth 3 only | construct accepted; remaining depth curve gated |
-| `memory_noise_stress / key_retention_v2` | `0/10/50/100/200/500/1000` | `0/10/50` | stopped at 50; installed Mem0/Letta target loss bracketed in `(10,50]`; no formal Failure Point |
+| `memory_noise_stress / key_retention_v2` | `0/10/50/100/200/500/1000` | `0/10/50` | diagnostic expansion stopped at 50; attempt-2 Formal independently freezes 10/30/50 and computes only its preregistered Failure Point |
 | `failure_learning / observed_precondition_v2` | configurable neutral `interference_count` | `0/10/50` | stopped at 50; target stayed rank1, transfer preparation changed vs NoMemory, no framework ranking |
 | `long_lived_memory / lifetime_v1` | event/session/update/similarity counts | `(8,2,1,1)`, `(20,4,2,5)`, `(50,8,4,15)` | bounded calibration accepted; Vector target loss begins in tested 20-event cell, Mem0/Letta retain through 50; diagnostic only |
 | `failure_learning_multi / observed_precondition_applicability_v4` | exactly one applicable and 1–2 heterogeneous inapplicable real failures plus neutral interference | terminal-corrected 2/3 failures × seeds 42/43/44 × four backends | accepted bounded diagnostic: None 0/3 both cells; Vector 2/3 then 3/3; Mem0/Letta 3/3; active retrieval ceiling, no monotone Failure Point |
@@ -68,7 +68,7 @@ producer revision being studied:
 
 1. external review owner creates and verifies a clean reviewed commit;
 2. source provenance is recorded and `--require-clean-source` passes;
-3. frozen `docs/preregistration_m15_formal_v1.md` specifies hypotheses,
+3. frozen `docs/preregistration_m15_formal_v1_attempt2.md` specifies hypotheses,
    cells, paired seeds, sample size, endpoints, exclusions and analysis;
 4. the TASK-027 pre-Formal gates verify the exact campaign and analysis;
 5. no retry, replacement, silent exclusion or mid-campaign parameter change.
@@ -100,10 +100,15 @@ producer revision being studied:
 7. A final review: **PASS** in `A-FINAL-026.md`.
 8. TASK-026 clean freeze/push: **PASS / complete** at
    `592e4ab72193fa541a1a536a1eab2752b03acad6`; local/remote synchronized.
-9. TASK-027 Formal V1: implement and test the fail-closed analysis and
-   one-shot no-retry producer; freeze the exact preregistration; then execute
-   exactly 320 planned runs in `results/formal_m15_v1_20260811`.
+9. TASK-027 Formal V1 attempt 1: **stopped and abandoned**. The immutable
+   evidence root `results/formal_m15_v1_20260811` contains 271 producer-ok, one
+   producer-failed and 48 pending slots; no retry/exclusion occurred.
+10. TASK-027 Formal V1 attempt 2: fix manifest attempt accounting without
+   changing experimental behavior; freeze a new identity with seeds 1011–1020;
+   then execute exactly 320 planned runs in the new empty root
+   `results/formal_m15_v1_20260811_attempt2`.
 
-TASK-027 authorizes only its gated preregistration and final-publication Git
-operations. It does not authorize parameter/seed changes, retries, Dashboard
-refactors, new backends or history rewriting.
+TASK-027's recovery rule requires a new gated commit, study identity,
+preregistration, fresh seeds and empty root after the stopped attempt. It does
+not authorize retries, splicing, outcome-driven changes, Dashboard refactors,
+new backends or history rewriting.

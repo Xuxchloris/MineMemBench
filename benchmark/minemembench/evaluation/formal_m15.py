@@ -27,15 +27,15 @@ from ..scenarios.base import ScenarioResult
 from ..scenarios.long_lived_memory import compute_lifetime_behavior_metrics
 
 FORMAL_STUDY_SCHEMA = "minemembench-formal-study/v1"
-STUDY_ID = "m15-formal-v1-controlled-20260811"
-FORMAL_RESULTS_RELATIVE = Path("results/formal_m15_v1_20260811")
+STUDY_ID = "m15-formal-v1-controlled-20260811-attempt2"
+FORMAL_RESULTS_RELATIVE = Path("results/formal_m15_v1_20260811_attempt2")
 FORMAL_BACKENDS = ("none", "vector", "mem0", "letta")
 ACTIVE_BACKEND_PAIRS = (
     ("vector", "mem0"),
     ("vector", "letta"),
     ("mem0", "letta"),
 )
-FORMAL_SEEDS = tuple(range(1001, 1011))
+FORMAL_SEEDS = tuple(range(1011, 1021))
 BOOTSTRAP_SEED = 20260811
 BOOTSTRAP_RESAMPLES = 10_000
 PRIMARY_ALPHA = 0.05
@@ -498,6 +498,7 @@ def _validate_root_manifest(root: Path, manifest: dict[str, Any], spec: FormalSt
     _require(manifest.get("study_id") == spec.study_id, "wrong formal study id")
     _require(manifest.get("mode") == "controlled", "Formal V1 must be Controlled mode")
     _require(manifest.get("plan") == spec.plan_dict(), "formal plan differs from frozen spec")
+    _require(manifest.get("expected_runs") == spec.expected_runs, "formal expected_runs mismatch")
     _require(manifest.get("status") == "complete", "formal producer status is not complete")
     _require(manifest.get("actual_runs") == spec.expected_runs, "formal actual_runs mismatch")
     _require(manifest.get("started_runs") == spec.expected_runs, "formal started_runs mismatch")

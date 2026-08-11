@@ -32,6 +32,7 @@ from minemembench.scenarios.base import ScenarioResult
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import run_controlled_campaign as campaign  # noqa: E402
+import run_formal_m15_v1 as producer  # noqa: E402
 
 NOW = datetime(2026, 8, 11, tzinfo=UTC).isoformat().replace("+00:00", "Z")
 COMMIT = "b" * 40
@@ -41,7 +42,8 @@ STATUS_FINGERPRINT = "c" * 64
 
 def test_frozen_production_plan_is_exactly_320_runs() -> None:
     assert DEFAULT_SPEC.expected_runs == 320
-    assert DEFAULT_SPEC.seeds == tuple(range(1001, 1011))
+    assert DEFAULT_SPEC.study_id == "m15-formal-v1-controlled-20260811-attempt2"
+    assert DEFAULT_SPEC.seeds == tuple(range(1011, 1021))
     assert DEFAULT_SPEC.backends == ("none", "vector", "mem0", "letta")
     assert [cell.name for cell in DEFAULT_SPEC.cells] == [
         "delayed_200_20",
@@ -337,6 +339,7 @@ def _write_fixture(
         "preregistration": {"path": "synthetic-prereg.md", "sha256": "1" * 64},
         "analysis": {"path": "synthetic-analysis.py", "sha256": "2" * 64},
         "plan": spec.plan_dict(),
+        "expected_runs": spec.expected_runs,
         "campaigns": [
             {
                 "scenario": "delayed_recall",
@@ -427,6 +430,7 @@ def test_paired_disagreement_and_exact_mcnemar(tmp_path: Path) -> None:
         ("wrong_fingerprint", "result producer provenance mismatch"),
         ("wrong_cell", "result params mismatch"),
         ("fairness_invalid", "fairness invalid"),
+        ("wrong_expected_runs", "formal expected_runs mismatch"),
     ],
 )
 def test_integrity_mismatches_fail_closed(tmp_path: Path, mutation: str, message: str) -> None:
@@ -457,6 +461,11 @@ def test_integrity_mismatches_fail_closed(tmp_path: Path, mutation: str, message
         result["fairness"]["valid"] = False  # type: ignore[index]
         result["fairness"]["invalid_reason"] = "synthetic contamination"  # type: ignore[index]
         _save(first_file, result)
+    elif mutation == "wrong_expected_runs":
+        study_path = root / "formal_study_manifest.json"
+        study = _json(study_path)
+        study["expected_runs"] = spec.expected_runs + 1
+        _save(study_path, study)
     with pytest.raises(FormalIntegrityError, match=message):
         load_formal_dataset(root, spec=spec)
 
@@ -521,3 +530,25 @@ def test_formal_producer_rejects_wrong_freeze_before_output(tmp_path: Path) -> N
     assert completed.returncode == 2
     assert "formal preflight failed" in completed.stderr
     assert not results_dir.exists()
+
+
+def test_formal_producer_counts_failed_attempt_separately(tmp_path: Path) -> None:
+    campaign_dir = tmp_path / "long_lived_memory"
+    campaign_dir.mkdir()
+    (campaign_dir / "campaign_manifest.json").write_text(
+        json.dumps(
+            {
+                "runs": [
+                    {"status": "ok"},
+                    {"status": "failed"},
+                    {"status": "pending"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    campaigns = [
+        {"relative_dir": "long_lived_memory"},
+        {"relative_dir": "not_started"},
+    ]
+    assert producer._count_campaign_statuses(tmp_path, campaigns) == (1, 2)

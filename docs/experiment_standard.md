@@ -1,8 +1,10 @@
 # M15 Experiment Standard
 
-> Status: **TASK-027 Formal V1 design ratified before run 1.** Diagnostic
-> evidence remains separate. Exact Formal cells, seeds, statistics and source
-> identity are frozen in `docs/preregistration_m15_formal_v1.md`.
+> Status: **TASK-027 Formal V1 attempt 1 stopped and was abandoned; attempt 2
+> preserves the design under a new prospective identity.** Diagnostic and
+> attempt-1 evidence remain separate. Exact attempt-2 cells, seeds, statistics
+> and source identity are frozen in
+> `docs/preregistration_m15_formal_v1_attempt2.md`.
 
 Binding rules for every stress-benchmark experiment. C executes exactly this;
 B keeps the tooling honest; A judges results against it. Changing this
@@ -16,8 +18,10 @@ standard requires an A-issued revision, never an ad-hoc decision mid-campaign.
   paired seed schedule `base_seed + run_index`, so the effective seeds are
   **42, 43, 44** — never the same seed three times — and each run log records
   its effective seed in `seed` and `fairness.run_seed`.
-- Formal V1 uses fresh paired seeds **1001–1010**, N=10 for every backend in
-  every treatment cell. Calibration seeds 42/43/44 are excluded.
+- Attempt 1 used paired seeds 1001–1010 and stopped on a producer failure; it
+  is excluded in full. Formal V1 attempt 2 uses fresh paired seeds
+  **1011–1020**, N=10 for every backend in every treatment cell. Calibration
+  seeds 42/43/44 and attempt-1 evidence are excluded.
 - Formal V1 has exactly eight treatment cells and 320 planned runs. It never
   extends based on observed Formal outcomes; no seed, cell, backend, prompt,
   parameter, retry or replacement may be added after run 1.
@@ -33,7 +37,7 @@ standard requires an A-issued revision, never an ad-hoc decision mid-campaign.
 |---|---|---|
 | `delayed_recall` | `recall_semantics_version`, `interference_count`, `similar_distractor_count` | Semantics version is part of the cell identity: `legacy` (rounds 1–4, semantics invalid for ranking — diagnostics only) vs `entity_key_v2` (TASK-011; the only ranking-eligible treatment). v2 ladder: (10,0) control → (50,5) → (200,20) → (500,50). **Never pool across semantics versions.** |
 | `world_update` | `update_semantics_version`, `update_depth` | Semantics version is part of the cell identity: `legacy` (probe-based metrics, mixed schemas — diagnostics only) vs `temporal_chain_v2` (TASK-013; neutral chain, causal step-0 metrics, typed ground truth). v2 depth-3 diagnostic is accepted in A-FINAL-015; remaining ladder: depth 1 control → 2 → 3 → 4. **Never pool across semantics versions or Controlled/Native modes.** |
-| `memory_noise_stress` | `noise_semantics_version`, `noise_count` | `legacy` remains Native compatibility only; `key_retention_v2` (TASK-016) is the only Controlled treatment and uses causal step-0 metrics + typed ground truth. Planned ladder: 0 → 10 → 50 → 100 → 200 → 500 → 1000. Counts 0/10/50 are accepted diagnostics in A-FINAL-019; installed Mem0/Letta target loss is bracketed in `(10,50]`. No further noise execution or formal Failure Point is authorized. |
+| `memory_noise_stress` | `noise_semantics_version`, `noise_count` | `legacy` remains Native compatibility only; `key_retention_v2` (TASK-016) is the only Controlled treatment and uses causal step-0 metrics + typed ground truth. Planned diagnostic ladder: 0 → 10 → 50 → 100 → 200 → 500 → 1000. Counts 0/10/50 are accepted diagnostics in A-FINAL-019; that diagnostic expansion is stopped. TASK-027 attempt 2 separately preregisters Formal 10/30/50 and its non-interpolated Failure Point. |
 | `failure_learning` | `failure_semantics_version`, `interference_count` | `legacy` is same-task retry/native compatibility only. `observed_precondition_v2` is approved in `A-APPROVAL-020`: an actual failed ActionResult supplies the only prompt-visible cause, then a different entity/task tests transfer. Counts 0/10/50 are accepted Controlled diagnostics in `A-FINAL-021`/`022`/`023`. All 27 memory runs retain the failure at rank1/top1 and prepare correctly; neutral ambient interference loads Mem0/Letta top-10 without creating a retrieval Failure Point. This ladder is stopped: no count100, wider expansion, ranking or formal claim is authorized. Any task-similar distractor treatment requires a new semantics version and separate review. The old `failure_transfer` artifact remains unregistered and invalid. |
 
 Diagnostic calibration used three paired seeds to select the informative

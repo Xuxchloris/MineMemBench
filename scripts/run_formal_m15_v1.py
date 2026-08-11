@@ -31,7 +31,9 @@ from minemembench.evaluation.formal_m15 import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CAMPAIGN_RUNNER = REPO_ROOT / "scripts" / "run_controlled_campaign.py"
 ANALYSIS_SCRIPT = REPO_ROOT / "scripts" / "analyze_formal_m15.py"
-DEFAULT_PREREGISTRATION = REPO_ROOT / "docs" / "preregistration_m15_formal_v1.md"
+DEFAULT_PREREGISTRATION = (
+    REPO_ROOT / "docs" / "preregistration_m15_formal_v1_attempt2.md"
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -130,8 +132,14 @@ def _campaign_command(
     return command
 
 
-def _count_campaign_results(root: Path, campaigns: list[dict[str, Any]]) -> int:
-    count = 0
+def _count_campaign_statuses(
+    root: Path,
+    campaigns: list[dict[str, Any]],
+) -> tuple[int, int]:
+    """Return successful and started run counts from child manifests."""
+
+    successful = 0
+    started = 0
     for campaign in campaigns:
         path = root / campaign["relative_dir"] / "campaign_manifest.json"
         if not path.is_file():
@@ -142,8 +150,20 @@ def _count_campaign_results(root: Path, campaigns: list[dict[str, Any]]) -> int:
             continue
         runs = data.get("runs")
         if isinstance(runs, list):
-            count += sum(isinstance(run, dict) and run.get("status") == "ok" for run in runs)
-    return count
+            successful += sum(
+                isinstance(run, dict) and run.get("status") == "ok" for run in runs
+            )
+            started += sum(
+                isinstance(run, dict) and run.get("status") in {"ok", "failed"}
+                for run in runs
+            )
+    return successful, started
+
+
+def _refresh_counts(root: Path, manifest: dict[str, Any]) -> None:
+    successful, started = _count_campaign_statuses(root, manifest["campaigns"])
+    manifest["actual_runs"] = successful
+    manifest["started_runs"] = started
 
 
 def _formal_environment() -> dict[str, str]:
@@ -248,6 +268,7 @@ def _manifest(
             },
         },
         "plan": DEFAULT_SPEC.plan_dict(),
+        "expected_runs": DEFAULT_SPEC.expected_runs,
         "campaigns": campaigns,
         "policy": {
             "primary_endpoint": "strict task_success",
@@ -322,13 +343,14 @@ def main(argv: list[str] | None = None) -> int:
             campaign["status"] = "integrity_stopped"
             campaign["error"] = error or "producer identity changed"
             manifest["status"] = "integrity_stopped"
-            manifest["actual_runs"] = _count_campaign_results(root, manifest["campaigns"])
+            manifest["stop_reason"] = campaign["error"]
+            _refresh_counts(root, manifest)
             _atomic_manifest(manifest_path, manifest)
             print(f"formal campaign STOPPED: {campaign['error']}", file=sys.stderr)
             return 1
         campaign["status"] = "running"
         manifest["status"] = "running"
-        manifest["actual_runs"] = _count_campaign_results(root, manifest["campaigns"])
+        _refresh_counts(root, manifest)
         _atomic_manifest(manifest_path, manifest)
         completed = subprocess.run(
             campaign["command"],
@@ -337,11 +359,13 @@ def main(argv: list[str] | None = None) -> int:
             check=False,
         )
         campaign["returncode"] = completed.returncode
-        manifest["actual_runs"] = _count_campaign_results(root, manifest["campaigns"])
-        manifest["started_runs"] = manifest["actual_runs"]
+        _refresh_counts(root, manifest)
         if completed.returncode != 0:
             campaign["status"] = "producer_stopped"
             manifest["status"] = "producer_stopped"
+            manifest["stop_reason"] = (
+                f"campaign {campaign['scenario']} returned {completed.returncode}"
+            )
             _atomic_manifest(manifest_path, manifest)
             print(
                 f"formal campaign STOPPED in {campaign['scenario']} with return code {completed.returncode}; no retry is permitted",
@@ -351,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
         campaign["status"] = "complete"
         _atomic_manifest(manifest_path, manifest)
 
-    manifest["actual_runs"] = _count_campaign_results(root, manifest["campaigns"])
+    _refresh_counts(root, manifest)
     if manifest["actual_runs"] != DEFAULT_SPEC.expected_runs:
         manifest["status"] = "integrity_stopped"
         _atomic_manifest(manifest_path, manifest)
