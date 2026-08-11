@@ -43,7 +43,9 @@ SOURCE_FILES: tuple[str, ...] = (
     "minecraft/package-lock.json",
     "minecraft/tsconfig.json",
     "docs/protocol.md",
+    "scripts/analyze_formal_m15.py",
     "scripts/run_controlled_campaign.py",
+    "scripts/run_formal_m15_v1.py",
     "scripts/verify_source_freeze.py",
     "scripts/verify_letta_live.py",
 )

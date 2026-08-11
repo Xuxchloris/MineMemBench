@@ -1,10 +1,10 @@
 # MineMemBench development plan
 
-Updated: 2026-08-09
+Updated: 2026-08-11
 Owner: Agent A
-Status: **TASK-026 implementation, independent QA, terminal-corrected bounded
-calibration and A final review are complete; only a separately authorized
-clean freeze remains gated**
+Status: **TASK-026 is clean-frozen, verified and pushed at `592e4ab...`;
+TASK-027 Formal V1 preregistration and frozen analysis are in progress;
+Formal runs started=0**
 
 This is the current development plan. The root-level
 `docsdevelopment_plan.md` is the historical M4-era user prompt and is retained
@@ -32,8 +32,8 @@ Controlled results are separate treatments and must never be pooled.
 | M10–M11 scenarios and reporting | complete | unit/integration tests and real result/log artifacts |
 | M15B Controlled stress infrastructure | complete | deterministic streams, fixtures, campaign-local stores, causal snapshots, fairness/reset audit |
 | M15 stable baseline | frozen | commit `9fdced8fa9967a6df7b856b035485b41e84c06dc`; source fingerprint `8606370026c2bde49737ccb945c9b69ed4aa9cb64090aa06df6cb7c23e24e55f`; freeze verification PASS |
-| M15.1 difficulty + dashboard/replay | reviewed freeze candidate | lifetime treatment, heterogeneous applicability v4, objective terminal actions, read-only live campaign matrix, deterministic semantic replay and four-way compare; A/C PASS on dirty tree |
-| M15 formal research phase | not approved | requires clean reviewed commit, frozen preregistration and A-authorized sample |
+| M15.1 difficulty + dashboard/replay | frozen / pushed | commit `592e4ab72193fa541a1a536a1eab2752b03acad6`; fingerprint `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`; strict verification PASS |
+| M15 Formal V1 research phase | preregistration implementation | fixed Controlled study: 8 treatment cells × 4 backends × fresh paired seeds 1001–1010 = 320; no run started |
 
 Current registered backends: `none`, `vector`, `mem0`, `letta`, `graphiti`.
 Graphiti live acceptance remains N/A under the controlled DeepSeek extractor;
@@ -63,14 +63,14 @@ It supports construct and mechanism observations only. It does not support a
 formal framework ranking, effect size, Failure Point, Native Minecraft claim or
 cost-efficiency comparison.
 
-Formal evidence requires all of the following before run 1 on the exact
+Formal V1 evidence requires all of the following before run 1 on the exact
 producer revision being studied:
 
 1. external review owner creates and verifies a clean reviewed commit;
 2. source provenance is recorded and `--require-clean-source` passes;
-3. a frozen copy of `docs/preregistration_template.md` specifies hypotheses,
+3. frozen `docs/preregistration_m15_formal_v1.md` specifies hypotheses,
    cells, paired seeds, sample size, endpoints, exclusions and analysis;
-4. Agent A authorizes the exact campaign; Agent C independently verifies it;
+4. the TASK-027 pre-Formal gates verify the exact campaign and analysis;
 5. no retry, replacement, silent exclusion or mid-campaign parameter change.
 
 ## 5. Immediate work order
@@ -97,9 +97,13 @@ producer revision being studied:
    `calibration_task026_failure_applicability_v4_terminal_v1_20260809` under
    source fingerprint
    `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`.
-7. A final review: **PASS** in `A-FINAL-026.md`. A separately authorized
-   M15.1 clean freeze remains pending. Formal preregistration/campaign
-   authorization are later explicit tasks.
+7. A final review: **PASS** in `A-FINAL-026.md`.
+8. TASK-026 clean freeze/push: **PASS / complete** at
+   `592e4ab72193fa541a1a536a1eab2752b03acad6`; local/remote synchronized.
+9. TASK-027 Formal V1: implement and test the fail-closed analysis and
+   one-shot no-retry producer; freeze the exact preregistration; then execute
+   exactly 320 planned runs in `results/formal_m15_v1_20260811`.
 
-No further diagnostic/formal campaign or Git freeze operation is currently
-authorized.
+TASK-027 authorizes only its gated preregistration and final-publication Git
+operations. It does not authorize parameter/seed changes, retries, Dashboard
+refactors, new backends or history rewriting.

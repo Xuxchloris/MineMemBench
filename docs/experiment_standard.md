@@ -1,9 +1,8 @@
 # M15 Experiment Standard
 
-> Status: **A-ratified for diagnostic design and smoke execution.** Formal
-> sample sizes, statistical tests and publication-level Failure Points remain
-> unapproved until an immutable reviewed revision and frozen preregistration
-> are available.
+> Status: **TASK-027 Formal V1 design ratified before run 1.** Diagnostic
+> evidence remains separate. Exact Formal cells, seeds, statistics and source
+> identity are frozen in `docs/preregistration_m15_formal_v1.md`.
 
 Binding rules for every stress-benchmark experiment. C executes exactly this;
 B keeps the tooling honest; A judges results against it. Changing this
@@ -17,12 +16,11 @@ standard requires an A-issued revision, never an ad-hoc decision mid-campaign.
   paired seed schedule `base_seed + run_index`, so the effective seeds are
   **42, 43, 44** — never the same seed three times — and each run log records
   its effective seed in `seed` and `fairness.run_seed`.
-- Formal phase: **not approved yet** (sample size pending an A-issued
-  revision). When approved, one seed schedule is used for every backend in a
-  cell (paired design), e.g. `--runs 10 --seed 42` for seeds 42–51.
-- If a formal cell's success rate lands in (0.2, 0.8) or run-to-run variance
-  is visibly high, extend that cell to 20–30 seeds (52+). Do not expand cells
-  that are already 0% or 100% — that burns API for no information.
+- Formal V1 uses fresh paired seeds **1001–1010**, N=10 for every backend in
+  every treatment cell. Calibration seeds 42/43/44 are excluded.
+- Formal V1 has exactly eight treatment cells and 320 planned runs. It never
+  extends based on observed Formal outcomes; no seed, cell, backend, prompt,
+  parameter, retry or replacement may be added after run 1.
 - Before any formal run, the external review owner must provide a clean commit,
   the campaign must pass `--require-clean-source`, and a frozen copy of
   `docs/preregistration_template.md` must specify the exact cells, paired seeds,
@@ -38,11 +36,10 @@ standard requires an A-issued revision, never an ad-hoc decision mid-campaign.
 | `memory_noise_stress` | `noise_semantics_version`, `noise_count` | `legacy` remains Native compatibility only; `key_retention_v2` (TASK-016) is the only Controlled treatment and uses causal step-0 metrics + typed ground truth. Planned ladder: 0 → 10 → 50 → 100 → 200 → 500 → 1000. Counts 0/10/50 are accepted diagnostics in A-FINAL-019; installed Mem0/Letta target loss is bracketed in `(10,50]`. No further noise execution or formal Failure Point is authorized. |
 | `failure_learning` | `failure_semantics_version`, `interference_count` | `legacy` is same-task retry/native compatibility only. `observed_precondition_v2` is approved in `A-APPROVAL-020`: an actual failed ActionResult supplies the only prompt-visible cause, then a different entity/task tests transfer. Counts 0/10/50 are accepted Controlled diagnostics in `A-FINAL-021`/`022`/`023`. All 27 memory runs retain the failure at rank1/top1 and prepare correctly; neutral ambient interference loads Mem0/Letta top-10 without creating a retrieval Failure Point. This ladder is stopped: no count100, wider expansion, ranking or formal claim is authorized. Any task-similar distractor treatment requires a new semantics version and separate review. The old `failure_transfer` artifact remains unregistered and invalid. |
 
-Campaign order: smoke the full ladder once (3 runs/cell) → A picks the
-informative difficulty band per scenario → formal seeds on the band →
-extend only contested cells. v2 execution is gated: after code/QA approval,
-one fresh 4-backend × 3-seed `(200,20)` smoke in a NEW results directory,
-then A raw review before anything wider.
+Diagnostic calibration used three paired seeds to select the informative
+band. Formal V1 now freezes delayed recall `(200,20)`, world-update depth 3,
+memory-noise `10/30/50`, and composite lifetime `L1/L2/L3`. Failure-learning
+v4 stays a diagnostic mechanism case study and is not pooled or ranked.
 
 ### Controlled CLI/campaign capability (TASK-014)
 
@@ -80,7 +77,25 @@ levels is never allowed; a backend that fails at the lowest non-control level
 is marked "fails at first step". No outcome is pre-assumed: the table is
 computed from logs only.
 
-## 4. Contamination guards (checked per run, audited per campaign)
+Formal V1 applies this rule only to memory noise `10→30→50` and long-lived
+memory `L1→L2→L3`. With N=10, 8/10 is not a failure and 7/10 is. Lifetime is
+a composite difficulty; its result is not attributed to event count alone.
+
+## 4. Formal statistics
+
+- Primary endpoint: strict evaluator/environment-derived `task_success`.
+- Primary active-backend pairs per cell: vector–mem0, vector–letta,
+  mem0–letta, paired on seed.
+- Test: two-sided exact McNemar; report both discordant directions.
+- Effect size: paired risk difference, first named backend minus second.
+- CI: paired percentile bootstrap, seed `20260811`, 10,000 resamples, with the
+  RNG reset per comparison and linear/R-7 quantiles.
+- Multiplicity: Holm-Bonferroni across all 24 pre-registered active-backend
+  primary comparisons.
+- Report effect sizes and CIs regardless of significance; no global
+  leaderboard and no equivalence claim from non-significance.
+
+## 5. Contamination guards (checked per run, audited per campaign)
 
 - Every run log must carry `fairness.valid == true` (controlled variables
   fingerprint + completed-episode reset verification). A run with
@@ -95,7 +110,7 @@ computed from logs only.
   scenario version and params across backends in a cell — read from the
   fairness records, not assumed.
 
-## 5. N/A rules
+## 6. N/A rules
 
 - Retrieval-layer structured-fact metrics (`current_fact_accuracy`,
   `fact_retrieval_rank`, `recall_accuracy`, `wrong_fact_rate`,
@@ -126,7 +141,7 @@ computed from logs only.
   is redesigned around a real observed failure cause (safety gate, §2).
 - N/A is neither a pass nor a failure: excluded from rates, reported as N/A.
 
-## 6. Reporting
+## 7. Reporting
 
 All numbers come from run logs; nothing is hand-filled. Required outputs per
 campaign: per-cell success/token/latency tables, the failure-point table

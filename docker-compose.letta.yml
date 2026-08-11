@@ -30,7 +30,8 @@
 
 services:
   letta-ollama:
-    image: ollama/ollama:latest
+    # Formal V1 pins the exact verified image digest; do not float `latest`.
+    image: ollama/ollama:latest@sha256:b88c73ace3e115f8ec53dc8761ae1c0aabfa675406e3681786b98757ce050f42
     environment:
       OLLAMA_HOST: 0.0.0.0
     volumes:
@@ -48,7 +49,7 @@ services:
       start_period: 30s
 
   letta-server:
-    image: letta/letta:0.16.8
+    image: letta/letta:0.16.8@sha256:aa66c3eeee13d2dfc40c650d709b550237ee31bfc91942a52fa488a13fa8c102
     depends_on:
       letta-ollama:
         condition: service_healthy

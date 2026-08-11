@@ -1,10 +1,10 @@
 # MineMemBench unified handoff
 
-Updated: 2026-08-09 Asia/Shanghai
+Updated: 2026-08-11 Asia/Shanghai
 Owner: Agent A
-Status: **TASK-026 M15.1 implementation, C QA, terminal-corrected v4
-calibration and A final review PASS; a separately authorized clean freeze
-remains pending; every formal experiment remains unauthorized**
+Status: **TASK-026 M15.1 clean freeze and remote push complete at
+`592e4ab72193fa541a1a536a1eab2752b03acad6`; TASK-027 Formal V1
+preregistration/analysis implementation is in progress; Formal runs started=0**
 
 This is the single handoff/source-of-truth document for the next task. Update
 this file in place; do not create parallel handoff/project-status documents.
@@ -15,22 +15,23 @@ this file in place; do not create parallel handoff/project-status documents.
   status/diff, tests and raw logs before acting.
 - `docs/development_plan.md` is now the current plan. The root-level
   `docsdevelopment_plan.md` is historical M4-era context only.
-- Agent B is unavailable because its quota is exhausted. Until restored, A
-  freezes the task and performs implementation, C independently tests, and A
-  performs final review. Repository rules still prohibit every agent from
-  staging, committing, or pushing.
-- Repo rule remains: no `git add`, commit or push; do not read/print `.env`,
+- TASK-027 explicitly authorizes the sole executing review owner to make only
+  the preregistration-freeze commit/push and the final-results commit/push
+  after their respective gates pass. This does not authorize unrelated Git
+  operations or history rewrites.
+- Do not read/print `.env`,
   change `docs/protocol.md`, fabricate results, or run network unit tests.
-- Do not add another memory framework. First make one stress scenario
-  semantically valid and discriminative.
+- Do not add another memory framework or optimize Dashboard in TASK-027.
 
 ## 2. Repository/runtime snapshot
 
-- Stable baseline branch/HEAD at TASK-026 start: `main` and `origin/main` at
-  `9fdced8fa9967a6df7b856b035485b41e84c06dc`. The stable source fingerprint is
-  `8606370026c2bde49737ccb945c9b69ed4aa9cb64090aa06df6cb7c23e24e55f` and the
-  TASK-025 clean-freeze verification passed. Never amend, rewrite or overwrite
-  that baseline.
+- Current stable branch/HEAD: local `main`, `origin/main` and remote
+  `refs/heads/main` are synchronized at
+  `592e4ab72193fa541a1a536a1eab2752b03acad6`. The clean TASK-026 source
+  fingerprint is
+  `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`
+  over 122 allowlisted files; strict freeze verification passed. Never amend,
+  rewrite or overwrite TASK-025/TASK-026 history.
 - Tests on the accepted TASK-025 tree: Agent A and C independently reached
   **378 Python passed** and the TypeScript baseline was **34 passed**. Current
   corrected TASK-026 candidate independently passes **429 Python** and
@@ -78,7 +79,7 @@ this file in place; do not create parallel handoff/project-status documents.
   TASK-026 dirty-tree identity is
   `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`
   over 122 files; its replacement v4 calibration is diagnostic only.
-  `--require-clean-source` rejects the current dirty
+  `--require-clean-source` rejects a dirty
   worktree before creating output. TASK-025 also adds a standalone read-only
   `scripts/verify_source_freeze.py`; a fingerprint does not replace a clean
   commit.
@@ -144,23 +145,23 @@ spaCy/BM25 features and non-normalized latency accounting must be disclosed.
 
 ## 6. One next task
 
-Request explicit project-owner Git freeze authorization. Only after that
-authorization may the review owner audit the exact worktree, create one clean
-TASK-026 commit, recapture its fingerprint and run strict source-freeze
-verification. Do not infer authorization from this handoff. No formal campaign
-or preregistration is authorized.
+Complete TASK-027's frozen Formal V1 preregistration and fail-closed analysis
+tests, pass all pre-Formal gates, then create/push the explicitly authorized
+preregistration freeze. Only that exact clean producer identity may execute
+the fixed eight-cell × four-backend × seeds 1001–1010 Controlled study. Formal
+results directory: `results/formal_m15_v1_20260811`; it is currently absent and
+Formal runs started=0.
 
 ## 7. Other open gaps, ordered
 
-- **Resolved through review / freeze pending — immutable reproducibility:**
-  TASK-025 remains the immutable stable baseline. TASK-026 code, QA,
-  calibration and A review pass; a new clean freeze still requires explicit
-  Git authorization.
+- **Resolved — immutable reproducibility:** TASK-025 remains immutable and
+  TASK-026 is separately frozen/pushed at `592e4ab...` with strict verification.
 - **Resolved — documentation drift:** `docs/development_plan.md`, README,
   stress design and experiment standard now describe the current M2/M3/M15
   state and evidence boundaries.
-- **High — formal statistics:** no formal n>=10 cell or Failure Point is
-  approved. The draft experiment standard still says pending A ratification.
+- **In progress — formal statistics:** TASK-027 fixes N=10 paired seeds,
+  exact McNemar, paired risk difference, deterministic bootstrap CI, Holm
+  correction and non-interpolated Failure Points before run 1.
 - **High — formal coverage:** M15.1 has bounded cross-session, noise and
   heterogeneous applicability-v4 diagnostics. V4 active retrieval and
   Mem0/Letta behavior have ceilings; there is no monotone active-backend
@@ -193,8 +194,6 @@ or preregistration is authorized.
 - Letta deployment/verification: `docs/letta_live.md`,
   `scripts/verify_letta_live.py`
 
-Current end state: the TASK-025 baseline remains frozen. Corrected M15.1
-lifetime, heterogeneous applicability-v4, objective terminal behavior and
-complete replay/dashboard pass implementation QA, replacement calibration and
-A final review. The current tree is dirty; no new freeze, formal ranking,
-formal Failure Point, preregistration or formal campaign is approved.
+Current end state: TASK-026 is frozen, verified and pushed. TASK-027 is
+preparing the immutable Formal producer and analysis contract; no Formal run
+has started and no Formal result or conclusion exists yet.

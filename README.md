@@ -112,6 +112,25 @@ explicit v2 semantics below.
 | `failure_learning_multi / observed_precondition_applicability_v4` | `observed_failure_count` 2–3, `interference_count` | one applicable plus 1–2 heterogeneous inapplicable real ActionResult failures; opaque non-ordinal alpha→iron, beta→string, gamma→gold mapping; completed target attack terminates the run; historical homogeneous v3 diagnostics are superseded |
 | `failure_transfer` | — | **SUSPENDED / unregistered**: fabricated causal failure, invalid for claims |
 
+### Controlled Formal V1 plan (TASK-027)
+
+TASK-026 is frozen and synchronized at commit
+`592e4ab72193fa541a1a536a1eab2752b03acad6` (source fingerprint
+`86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`).
+Formal V1 is a fixed paired Controlled study of `none`, `vector`, `mem0` and
+`letta`: eight pre-registered treatment cells × fresh seeds `1001–1010` =
+320 runs. The cells are delayed recall `(200,20)`, world update depth 3,
+memory noise `10/30/50`, and composite lifetime `L1/L2/L3`. Calibration seeds
+`42/43/44` and failure-learning v4 remain diagnostic and are never pooled.
+
+The primary endpoint is strict evaluator-derived `task_success`. Active
+backend comparisons use exact paired McNemar tests, paired risk differences,
+a deterministic paired-bootstrap 95% CI, and Holm correction across the 24
+pre-registered primary comparisons. Formal execution is permitted only after
+the preregistration, analysis code, source identity, live Letta verification,
+fixture/reset gates, and exact campaign plan are frozen. See
+`docs/preregistration_m15_formal_v1.md`.
+
 Configuration example only (not an experiment authorization):
 
 ```bash
@@ -144,6 +163,19 @@ without starting a campaign or creating output:
 .venv\Scripts\python scripts\verify_source_freeze.py --require-clean `
   --expected-source-fingerprint <A-approved-sha256> `
   --expected-git-commit <reviewed-commit-sha>
+```
+
+After the Formal preregistration freeze, the one-shot producer is invoked
+with that exact commit and source fingerprint. It refuses a dirty/mismatched
+source or a non-empty Formal directory and has no resume/retry path:
+
+```powershell
+.venv\Scripts\python scripts\run_formal_m15_v1.py `
+  --expected-git-commit <preregistration-freeze-commit> `
+  --expected-source-fingerprint <frozen-source-sha256>
+
+.venv\Scripts\python scripts\analyze_formal_m15.py `
+  --results-dir results\formal_m15_v1_20260811
 ```
 
 The verifier prints compact hashes/counts/booleans only. Diagnostic mode
@@ -221,19 +253,15 @@ the benchmark.
 
 - Single agent, single environment (Minecraft). No multi-agent claims.
 - LLM planner behavior is stochastic; conclusions need multiple seeded runs.
-- Current M15 Controlled evidence uses three paired seeds per cell on versioned
-  mock fixtures. It is diagnostic, not a formal ranking, effect size, Failure
-  Point, Native-Minecraft result, or cost-efficiency comparison.
-- The M15 stable baseline is frozen at commit
-  `9fdced8fa9967a6df7b856b035485b41e84c06dc` (source fingerprint
-  `8606370026c2bde49737ccb945c9b69ed4aa9cb64090aa06df6cb7c23e24e55f`).
-  TASK-026 M15.1 implementation, C QA, terminal-corrected bounded calibration
-  and A review are complete on source fingerprint
-  `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`
-  on a dirty development tree. The revision still requires its own clean
-  reviewed freeze, frozen preregistration and `--require-clean-source` before
-  any formal campaign; neither stable-baseline freeze nor diagnostic evidence
-  is formal.
+- Existing seeds `42/43/44` are diagnostic calibration only, not a formal
+  ranking, effect size, Failure Point, Native-Minecraft result, or
+  cost-efficiency comparison. Formal V1 uses a separate fixed paired sample.
+- The M15.1 TASK-026 implementation is clean-frozen and pushed at commit
+  `592e4ab72193fa541a1a536a1eab2752b03acad6`, source fingerprint
+  `86c625f9a130be3b5a81c3ed7ca48db9eb128493eb703ac98ca905a2bb9fd3f6`;
+  strict freeze verification passed and local `main` matched `origin/main`.
+  That makes the implementation reproducible but does not turn earlier dirty
+  calibration evidence into Formal data.
 - High-level actions only — this benchmarks memory, not motor control.
 - Mem0/Letta adapters depend on those projects' evolving APIs; adapters pin and
   document the versions they were verified against.
@@ -275,5 +303,5 @@ the benchmark.
 - [x] M15A Letta Docker live memory-only integration
 - [x] M15B versioned stress scenarios + Controlled diagnostic infrastructure
 - [x] M15.1 lifetime/multi-failure difficulty plus read-only replay/dashboard
-- [ ] Formal preregistered M15 study on a clean reviewed revision
+- [ ] TASK-027 Formal preregistration freeze, fixed 320-run study and analysis
 - [ ] Later: Graphiti, ReMe, Text2Mem, A-Mem, Generative Agents memory

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 import uuid
 from datetime import UTC, datetime
@@ -53,6 +54,19 @@ _TIMEOUT_S = 10.0
 _failures: list[str] = []
 
 
+def _exclude_loopback_proxies() -> None:
+    """Keep both the health client and Letta SDK on the local Docker route."""
+
+    existing = os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or ""
+    entries = [entry.strip() for entry in existing.split(",") if entry.strip()]
+    for loopback in ("localhost", "127.0.0.1"):
+        if loopback not in entries:
+            entries.append(loopback)
+    value = ",".join(entries)
+    os.environ["NO_PROXY"] = value
+    os.environ["no_proxy"] = value
+
+
 def _mark(label: str, ok: bool, detail: str = "") -> None:
     """Print PASS/FAIL for one check and record failures."""
     status = "PASS" if ok else "FAIL"
@@ -66,7 +80,9 @@ async def _server_available(base_url: str) -> str | None:
     """Return the server version if reachable, else None."""
     url = base_url.rstrip("/") + "/v1/health/"
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
+        # A system proxy must never intercept this loopback-only acceptance
+        # probe (the benchmark's planner provider follows the same rule).
+        async with httpx.AsyncClient(timeout=_TIMEOUT_S, trust_env=False) as client:
             response = await client.get(url)
         if response.status_code == 200:
             data = response.json()
@@ -201,6 +217,8 @@ async def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
+
+    _exclude_loopback_proxies()
 
     settings = Settings()
     base_url = settings.letta_base_url
