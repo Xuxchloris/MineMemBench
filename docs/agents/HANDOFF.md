@@ -2,10 +2,10 @@
 
 Updated: 2026-08-11 Asia/Shanghai
 Owner: Agent A
-Status: **TASK-027 attempt 1 was clean-frozen/pushed at `7c96df88...` and
-stopped fail-closed on an external planner-DNS producer failure; it is
-abandoned with no retry. Attempt 2 preregistration/recovery is in progress and
-its Formal runs started=0.**
+Status: **MineMemBench Controlled Formal V1 is complete. Attempt 2 is the sole
+final Formal dataset: 320/320 valid, integrity PASS, paired statistics and
+final report complete. The clean commit containing this handoff is the final
+publication identity and is synchronized to `origin/main`.**
 
 This is the single handoff/source-of-truth document for the next task. Update
 this file in place; do not create parallel handoff/project-status documents.
@@ -16,26 +16,23 @@ this file in place; do not create parallel handoff/project-status documents.
   status/diff, tests and raw logs before acting.
 - `docs/development_plan.md` is now the current plan. The root-level
   `docsdevelopment_plan.md` is historical M4-era context only.
-- TASK-027 authorizes gated research freezes and requires a new commit, study
-  identity, preregistration and empty root after a stopped integrity attempt.
-  This does not authorize unrelated Git operations, retries, splicing, amend,
-  force-push or history rewriting.
+- TASK-027 Formal production is closed. Never rerun, retry, replace, splice or
+  modify any of its 320 Attempt-2 runs. Only read-only recalculation is allowed.
 - Do not read/print `.env`,
   change `docs/protocol.md`, fabricate results, or run network unit tests.
-- Do not add another memory framework or optimize Dashboard in TASK-027.
+- Do not add another memory framework, scenario, statistic or Dashboard
+  feature during closeout. Dashboard V2 is the next separate task.
 
 ## 2. Repository/runtime snapshot
 
-- Current stable branch/HEAD: local `main`, `origin/main` and remote
-  `refs/heads/main` are synchronized at attempt-1 freeze
-  `7c96df88c4208e47217da984f61798be051f56da`. Its clean source fingerprint is
-  `f21af111b86926aca18e77846e3b37f52d7b235facdc242daf0977a314ffc38a`
-  over 126 allowlisted files; strict verification passed before and after the
-  stop. Never amend or rewrite TASK-025/TASK-026/attempt-1 history.
-- Tests on the accepted TASK-025 tree: Agent A and C independently reached
-  **378 Python passed** and the TypeScript baseline was **34 passed**. Current
-  corrected TASK-026 candidate independently passes **429 Python** and
-  **40 TypeScript** tests plus TypeScript build and Dashboard JS syntax.
+- Formal producer identity: commit
+  `64c822faf2ae8e490b3da11ed86261566bd93256`, source fingerprint
+  `ebfe9172dbe83abb5d76c2f8459ef346b8888d4f8e2bafca4d09799566bad3b3`
+  over 126 allowlisted files. The final publication commit is the repository
+  HEAD containing this handoff; never amend prior TASK-025/TASK-026/Formal
+  producer history.
+- Final closeout suite: **447 Python passed**, **40 TypeScript passed**, and
+  TypeScript build PASS. The focused Formal analyzer suite is 18 passed.
 - Letta strict live verifier: PASS for exact add/retrieve, update, reset and
   fresh-scope isolation. Server `letta/letta:0.16.8`; Python client 1.12.1.
 - Installed memory packages: mem0ai 2.0.17; graphiti-core 0.29.3.
@@ -105,6 +102,7 @@ separate.
 
 | evidence | validity and narrow result |
 |---|---|
+| `results/formal_m15_v1_20260811_attempt2/` | **Sole final Controlled Formal V1 dataset**: 320/320 valid, 0 retries/exclusions, four backends × eight cells × seeds 1011–1020. Integrity/statistics PASS. Results: `docs/formal_m15_v1_results.md`. |
 | `results/stress_round1/` | Native exploratory only; rejected for causal comparison because world state/run order drifted and events differed across backends. |
 | `results/stress_controlled_round1/` | Valid Controlled smoke: 24 runs. NoMemory 0/3; memory backends 3/3 at (10,0) and (50,5). Retrieval changed but behavior had a ceiling. |
 | `results/stress_controlled_round2_200_20/` | 12 valid executions but the Scenario was contaminated: wrong facts literally said `wrong location` / `used to be located here`, used different actor/type, and full backend internals reached the LLM. Vector rank 6 vs mem0/letta rank 1 is not a valid framework claim. |
@@ -128,31 +126,30 @@ Round-4 metrics: NoMemory 0/3; vector 3/3 rank `[1,1,1]`; mem0 0/3
 rank `[2,N/A,N/A]`; letta 0/3 rank `[3,7,9]`. These are not a superiority
 ranking or Failure Point.
 
-## 5. Highest-priority research finding
+## 5. Final Formal V1 findings
 
-### Accepted diagnostic — target availability mediates v2 behavior
+- Integrity: 320/320 valid; missing/duplicate/unexpected/invalid 0;
+  retries/exclusions 0; raw evidence unchanged through analysis.
+- Delayed 200/20: Vector 10/10, Mem0 8/10, Letta 7/10 strict success.
+- World update depth 3: all active backends retrieve 10/10, while behavior is
+  Vector 3/10, Mem0 6/10, Letta 4/10.
+- Noise Failure Points: Vector not observed through 50, Mem0 30, Letta 50.
+- Composite lifetime: Vector 5/10 at L1 and 0/10 at L2/L3; Mem0/Letta 10/10
+  throughout. Vector versus Mem0/Letta at L2/L3 is Holm-significant
+  (adjusted p 0.046875); no other comparison rejects after correction.
+- Retrieval→behavior totals: present/success 180, present/failure 22,
+  absent/success 0, absent/failure 118. Retrieval is necessary in these
+  treatments but not sufficient for correct behavior.
 
-Round 5 resolves the legacy semantic contradiction. For the three tested
-seeds, every memory-backed run with the declared target event in causal top-10
-succeeded (6/6), including Letta at rank 4; every target-absent memory run
-failed (3/3), and NoMemory failed 3/3. This is valid causal diagnostic evidence
-that retrieval availability affects behavior and that the planner is not
-blindly following top-1. It is not a framework ranking or Failure Point.
-
-Formal delayed-recall expansion remains gated on a clean immutable reviewed
-revision and a pre-registered paired sample. Mem0's missing optional
-spaCy/BM25 features and non-normalized latency accounting must be disclosed.
+See `docs/formal_m15_v1_results.md` for all cells, paired effects/CIs,
+Failure Points, cost caveats, representative cases and interpretation limits.
 
 ## 6. One next task
 
-Complete the new attempt-2 preregistration and audit-accounting fix, pass every
-pre-Formal gate, then clean-freeze/push the recovery producer. Only that exact
-identity may execute the fixed eight-cell × four-backend × fresh seeds
-1011–1020 Controlled study in the new empty root
-`results/formal_m15_v1_20260811_attempt2`. Attempt-1 raw evidence remains at
-`results/formal_m15_v1_20260811` and must never be resumed or pooled.
+Dashboard V2 visual/UX work only, under a new task. Recommendations are listed
+in `docs/formal_m15_v1_results.md`; none were implemented during TASK-027.
 
-## 7. Other open gaps, ordered
+## 7. Remaining limitations / future work
 
 - **Resolved — immutable reproducibility:** TASK-025 remains immutable and
   TASK-026 is separately frozen/pushed at `592e4ab...` with strict verification.
@@ -162,16 +159,14 @@ identity may execute the fixed eight-cell × four-backend × fresh seeds
 - **High / resolved by abandonment — attempt-1 producer stop:** DeepSeek DNS
   resolution failed at one long-lived slot. Evidence is preserved in
   `A-INCIDENT-027-ATTEMPT1.md`; 0 retries and 0 exclusions.
-- **In progress — formal statistics:** TASK-027 fixes N=10 paired seeds,
-  exact McNemar, paired risk difference, deterministic bootstrap CI, Holm
-  correction and non-interpolated Failure Points before run 1.
-- **High — formal coverage:** M15.1 has bounded cross-session, noise and
-  heterogeneous applicability-v4 diagnostics. V4 active retrieval and
-  Mem0/Letta behavior have ceilings; there is no monotone active-backend
-  Failure Point. Non-preregistered expansion remains gated; the exact attempt-2
-  n=10 Formal sample is authorized only after its new freeze gates pass.
-  Historical fabricated
-  `failure_transfer` remains N/A and unregistered.
+- **Resolved — Formal V1:** Attempt 2 is complete and is the only analyzed
+  Formal dataset. Attempt 1 remains preserved/incomplete and excluded.
+- **Disclosed — analyzer schema erratum:** the original helper expected the
+  optional top-level location. The minimal typed-context correction is recorded
+  in `A-ANALYSIS-ERRATUM-027-ATTEMPT2.md`; no raw run/design/statistic changed.
+- **Bounded statistical scope:** N=10, one planner/config and Controlled mock
+  fixtures only. No global leaderboard, equivalence, Native or external
+  validity claim follows.
 - **Medium — cost accounting:** memory-internal LLM/embedding calls and init
   time are not separated from per-operation latency. Current average add
   latency cannot support efficiency claims.
@@ -187,8 +182,9 @@ identity may execute the fixed eight-cell × four-backend × fresh seeds
 - Latest implementation completion: `docs/agents/reviews/A-IMPLEMENTATION-026.md`
 - Latest independent code/data QA: `docs/agents/qa/QA-026.md`
 - Latest TASK-026 A final review: `docs/agents/reviews/A-FINAL-026.md` — PASS
-  for its historical freeze. TASK-027 attempt-2 authority and gate are recorded
-  separately in `A-PREFLIGHT-027-ATTEMPT2.md`.
+  for its historical freeze. TASK-027 preflight is
+  `A-PREFLIGHT-027-ATTEMPT2.md`; final results are
+  `docs/formal_m15_v1_results.md`.
 - Latest calibration report: `docs/difficulty-calibration.md`
 - Latest raw evidence: terminal-corrected v4 replacement directory above;
   lifetime/noise remain dirty-tree diagnostics; homogeneous v3 and first v4
@@ -198,7 +194,8 @@ identity may execute the fixed eight-cell × four-backend × fresh seeds
 - Letta deployment/verification: `docs/letta_live.md`,
   `scripts/verify_letta_live.py`
 
-Current end state: TASK-026 is frozen, verified and pushed. TASK-027 is
-preparing the independent attempt-2 producer and analysis contract. Attempt 1
-is incomplete and rejected for analysis; attempt-2 runs started=0, so no valid
-Formal result or conclusion exists yet.
+Current end state: TASK-026 is frozen and preserved. TASK-027 Attempt 2 is the
+sole final Formal dataset, 320/320 valid with integrity/statistics/reporting
+complete and published from the clean commit containing this handoff. No
+Formal run may be executed again. Only Dashboard V2 and explicitly scoped
+Future Work remain.

@@ -40,6 +40,9 @@ BOOTSTRAP_SEED = 20260811
 BOOTSTRAP_RESAMPLES = 10_000
 PRIMARY_ALPHA = 0.05
 RETRIEVAL_LIMIT = 10
+ANALYSIS_ERRATUM_RELATIVE = Path(
+    "docs/agents/reviews/A-ANALYSIS-ERRATUM-027-ATTEMPT2.md"
+)
 
 
 class FormalIntegrityError(ValueError):
@@ -321,12 +324,64 @@ def retrieval_evidence(result: ScenarioResult) -> tuple[bool, int | None]:
 
 
 def _target_position(result: ScenarioResult) -> tuple[float, float, float]:
+    """Recover the objective position from the typed Formal event contract.
+
+    Controlled v2 location facts deliberately use one neutral context schema
+    (``entity_key/subject`` plus ``x/y/z``) across target and distractors.  The
+    optional top-level ``ExperienceEvent.location`` is not populated by these
+    scenarios.  Ground-truth event identity selects the target; coordinates
+    are then read from that target event's typed context without parsing
+    backend text.  If a legacy/top-level location is also present it must
+    agree exactly, so the compatibility check cannot mask contradictory raw
+    evidence.
+    """
+
     target_id = _target_event_id(result)
+    truth = _ground_truth_dict(result)
     for event in result.injected_events:
-        if event.event_id == target_id and event.location is not None:
-            return event.location.x, event.location.y, event.location.z
+        if event.event_id != target_id:
+            continue
+        if result.scenario in {"delayed_recall", "memory_noise_stress"}:
+            _require(
+                event.context.get("entity_key") == truth.get("target_entity_key"),
+                (
+                    f"{result.scenario}/{result.episode_id}: target event "
+                    "entity key contradicts typed ground truth"
+                ),
+            )
+        elif result.scenario == "world_update":
+            _require(
+                event.context.get("subject") == truth.get("entity_key"),
+                (
+                    f"{result.scenario}/{result.episode_id}: target event "
+                    "subject contradicts typed ground truth"
+                ),
+            )
+        raw_coordinates = tuple(event.context.get(axis) for axis in ("x", "y", "z"))
+        if any(
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            for value in raw_coordinates
+        ):
+            break
+        context_position = tuple(float(value) for value in raw_coordinates)
+        if not all(math.isfinite(value) for value in context_position):
+            break
+        if event.location is not None:
+            location_position = (
+                event.location.x,
+                event.location.y,
+                event.location.z,
+            )
+            _require(
+                location_position == context_position,
+                (
+                    f"{result.scenario}/{result.episode_id}: target event "
+                    "location contradicts typed context"
+                ),
+            )
+        return context_position
     raise FormalIntegrityError(
-        f"{result.scenario}/{result.episode_id}: target event has no auditable location"
+        f"{result.scenario}/{result.episode_id}: target event has no auditable typed context position"
     )
 
 
@@ -1216,6 +1271,8 @@ def _markdown_report(
         f"- Runs: {dataset.integrity['actual']}/{dataset.integrity['expected']} valid; integrity **{dataset.integrity['verdict']}**",
         "- Primary endpoint: strict evaluator-derived `task_success`.",
         "- Scope: configured backends under this frozen Controlled fixture only; no global leaderboard.",
+        "- Analysis erratum: the original analyzer stopped before writing outputs because Controlled v2 positions are stored in typed `context.x/y/z`, not the optional `ExperienceEvent.location`. The minimal schema correction changed no run, endpoint, treatment, seed, or statistical rule.",
+        f"- Erratum record: `{ANALYSIS_ERRATUM_RELATIVE.as_posix()}`.",
         "",
         "## Scenario-specific outcomes",
         "",
@@ -1393,6 +1450,10 @@ def analyze_formal(
         "schema_version": "minemembench-formal-analysis/v1",
         "study_id": dataset.manifest["study_id"],
         "producer": dataset.manifest["producer"],
+        "analysis_erratum": {
+            "scope": "target_position_schema_compatibility_only",
+            "record": ANALYSIS_ERRATUM_RELATIVE.as_posix(),
+        },
         "integrity": dataset.integrity,
         "plan": spec.plan_dict(),
         "statistics": {

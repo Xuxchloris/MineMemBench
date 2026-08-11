@@ -138,8 +138,13 @@ def _event(seed: int, episode: str) -> dict[str, object]:
         "actor": "instructor",
         "target": "cache",
         "event_type": "location_discovered",
-        "location": {"x": 8.0, "y": 64.0, "z": 0.0},
-        "context": {"entity_key": f"cache-{seed}"},
+        "location": None,
+        "context": {
+            "entity_key": f"cache-{seed}",
+            "x": 8.0,
+            "y": 64.0,
+            "z": 0.0,
+        },
         "outcome": "observed",
         "raw_events": [],
     }
@@ -491,6 +496,25 @@ def test_failure_attribution_R_P_E_ignores_reason_text() -> None:
     assert classify_failure(retrieval_failure, retrieval_evidence(retrieval_failure)[0]) == "R"
     assert classify_failure(present_wrong_action, retrieval_evidence(present_wrong_action)[0]) == "P"
     assert classify_failure(environment_failure, retrieval_evidence(environment_failure)[0]) == "E"
+
+
+def test_target_position_fails_closed_on_context_location_contradiction() -> None:
+    spec = _spec()
+    raw = _result(
+        spec=spec,
+        backend="vector",
+        seed=1001,
+        success=False,
+        retrieval=True,
+    )
+    raw["injected_events"][0]["location"] = {  # type: ignore[index]
+        "x": 99.0,
+        "y": 64.0,
+        "z": 0.0,
+    }
+    result = ScenarioResult.model_validate(raw)
+    with pytest.raises(FormalIntegrityError, match="contradicts typed context"):
+        classify_failure(result, retrieval_present=True)
 
 
 def test_failure_point_none_first_and_middle() -> None:
