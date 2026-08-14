@@ -33,3 +33,6 @@ Thumbs.db
 # Local model caches
 .models/
 .venv-letta/
+
+# Generated third-party spec (re-download from a running Letta server)
+openapi_letta.json
